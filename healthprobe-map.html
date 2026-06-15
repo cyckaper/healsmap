@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>HealthProbe 場域地圖</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root{
+    --paper:#f3f1e9; --paper-2:#eae6da; --inset:#fbfaf6;
+    --ink:#222b26; --ink-soft:#5d6b62; --ink-faint:#8a9389;
+    --moss:#33614c; --moss-deep:#244635; --sage:#9bb0a1;
+    --clay:#c0573b; --line:#dcd6c6; --line-soft:#e7e2d5;
+    --shadow:0 1px 2px rgba(36,46,40,.06),0 6px 24px rgba(36,46,40,.08);
+    --r:12px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang TC","Noto Sans CJK TC","Microsoft JhengHei",system-ui,sans-serif;
+    color:var(--ink); background:var(--paper-2);
+    -webkit-text-size-adjust:100%;
+  }
+  #app{display:grid;grid-template-columns:344px 1fr;height:100%}
+  #map{height:100%;background:#e9ece8}
+
+  /* ---- panel ---- */
+  #panel{
+    height:100%;overflow-y:auto;background:var(--paper);
+    border-right:1px solid var(--line);
+    padding:18px 18px 28px;
+    display:flex;flex-direction:column;gap:18px;
+  }
+  .brand{display:flex;align-items:center;gap:11px}
+  .brand h1{font-size:17px;line-height:1.15;margin:0;font-weight:700;letter-spacing:.2px}
+  .brand p{margin:2px 0 0;font-size:11.5px;color:var(--ink-soft);letter-spacing:.3px}
+  .brand svg{flex:0 0 auto;border-radius:9px}
+
+  .eyebrow{
+    font-size:11px;font-weight:700;letter-spacing:.12em;color:var(--ink-faint);
+    text-transform:uppercase;margin:0 0 8px;display:flex;align-items:center;gap:7px;
+  }
+  .eyebrow::after{content:"";flex:1;height:1px;background:var(--line-soft)}
+
+  .block{border:1px solid var(--line);border-radius:var(--r);background:var(--inset);padding:13px}
+
+  .btn{
+    display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
+    border:1px solid var(--moss);background:var(--moss);color:#fff;
+    font-size:13.5px;font-weight:600;padding:10px 12px;border-radius:10px;cursor:pointer;
+    transition:background .12s ease;
+  }
+  .btn:hover{background:var(--moss-deep)}
+  .btn:focus-visible{outline:2px solid var(--clay);outline-offset:2px}
+  .file-meta{margin-top:9px;font-size:11.5px;color:var(--ink-soft);line-height:1.45}
+  .file-meta b{color:var(--ink)}
+
+  label.lbl{display:block;font-size:11.5px;color:var(--ink-soft);margin:0 0 5px}
+  select{
+    width:100%;font-size:14px;font-family:inherit;color:var(--ink);
+    padding:9px 10px;border:1px solid var(--line);border-radius:9px;background:var(--inset);
+    appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M2 4l4 4 4-4' fill='none' stroke='%235d6b62' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+    background-repeat:no-repeat;background-position:right 10px center;cursor:pointer;
+  }
+  select:focus-visible{outline:2px solid var(--moss);outline-offset:1px}
+
+  /* legend */
+  .legend-name{font-size:13.5px;font-weight:600;margin:0 0 9px}
+  .legend-name small{font-weight:500;color:var(--ink-soft);font-size:11.5px}
+  .gradient{height:11px;border-radius:6px;border:1px solid var(--line)}
+  .scale-ends{display:flex;justify-content:space-between;margin-top:6px;font-size:11.5px;color:var(--ink-soft);font-variant-numeric:tabular-nums}
+  .nodata-note{font-size:12px;color:var(--clay);margin:8px 0 0}
+  .legend-foot{font-size:11px;color:var(--ink-faint);margin:10px 0 0;line-height:1.5}
+  .legend-foot .swatch{display:inline-block;width:10px;height:10px;border-radius:50%;background:#d7d2c4;border:1px solid #b9b3a3;vertical-align:-1px;margin-right:3px}
+
+  /* toggle */
+  .row-between{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .switch{position:relative;width:42px;height:24px;flex:0 0 auto}
+  .switch input{opacity:0;width:0;height:0}
+  .track{position:absolute;inset:0;background:#cfcabb;border-radius:24px;transition:background .15s}
+  .track::before{content:"";position:absolute;width:18px;height:18px;left:3px;top:3px;background:#fff;border-radius:50%;transition:transform .15s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+  .switch input:checked + .track{background:var(--moss)}
+  .switch input:checked + .track::before{transform:translateX(18px)}
+  .switch input:focus-visible + .track{outline:2px solid var(--clay);outline-offset:2px}
+  .toggle-cap{font-size:13.5px;font-weight:600}
+  .toggle-sub{font-size:11px;color:var(--ink-soft);margin-top:2px}
+
+  /* sites */
+  .site{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line-soft)}
+  .site:first-child{border-top:0}
+  .site .nm{font-size:13px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .site .ct{font-size:11px;color:var(--ink-faint)}
+  .site .val{font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;min-width:54px;text-align:right}
+  .dot{width:11px;height:11px;border-radius:50%;flex:0 0 auto;border:1px solid rgba(0,0,0,.12)}
+
+  .foot{font-size:10.5px;color:var(--ink-faint);line-height:1.6;margin-top:auto;padding-top:6px}
+
+  /* popup */
+  .leaflet-popup-content-wrapper{border-radius:12px;box-shadow:var(--shadow)}
+  .leaflet-popup-content{margin:13px 15px;font-family:inherit;color:var(--ink);line-height:1.5}
+  .pop b.site{font-size:14.5px}
+  .badge{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:20px;background:#e3ede6;color:var(--moss-deep);margin-left:6px;vertical-align:1px}
+  .pop .when{font-size:11.5px;color:var(--ink-soft);margin:3px 0 9px}
+  .pop .grp{margin:8px 0 0}
+  .pop .grp .h{font-size:10.5px;font-weight:700;letter-spacing:.08em;color:var(--ink-faint);text-transform:uppercase;margin:0 0 3px}
+  .pop .kv{font-size:12.5px;font-variant-numeric:tabular-nums}
+  .pop .muted{color:var(--ink-faint);font-size:12px}
+  .chips{display:flex;flex-wrap:wrap;gap:4px 6px;margin-top:3px}
+  .chip{font-size:11.5px;background:var(--paper-2);border-radius:7px;padding:2px 7px;font-variant-numeric:tabular-nums}
+  .chip.hl{background:#e3ede6}
+
+  /* mobile */
+  @media (max-width:760px){
+    #app{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+    #panel{height:auto;max-height:46vh;border-right:0;border-bottom:1px solid var(--line)}
+    #map{height:100%}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="panel">
+    <div class="brand">
+      <svg viewBox="0 0 48 48" width="34" height="34" aria-hidden="true">
+        <rect width="48" height="48" rx="11" fill="#e3ede6"/>
+        <path d="M13 31C12 19 24 10 36 12c1 12-9 22-22 21-1 0-1-1-1-2z" fill="#33614c"/>
+        <polyline points="9,29 18,29 21,21 25,37 29,25 32,29 41,29" fill="none" stroke="#fff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div>
+        <h1>HealthProbe 場域地圖</h1>
+        <p>採集事件 · 生理 × 環境 × 主觀</p>
+      </div>
+    </div>
+
+    <div>
+      <p class="eyebrow">資料</p>
+      <div class="block">
+        <button class="btn" id="loadBtn" type="button">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          載入匯出的 JSON
+        </button>
+        <input id="fileInput" type="file" accept=".json,application/json" hidden>
+        <div class="file-meta" id="fileMeta">目前顯示：<b>內建範例（6 筆）</b><br>從 App「匯出全部事件 JSON」拿到檔後載入即可。</div>
+      </div>
+    </div>
+
+    <div>
+      <p class="eyebrow">著色指標</p>
+      <div class="block">
+        <label class="lbl" for="metric">用哪個變數替點上色</label>
+        <select id="metric" aria-label="著色指標"></select>
+      </div>
+    </div>
+
+    <div>
+      <p class="eyebrow">圖例</p>
+      <div class="block">
+        <div class="legend-name" id="legendName"></div>
+        <div class="gradient" id="gradient"></div>
+        <div class="scale-ends"><span id="scaleMin"></span><span id="scaleMax"></span></div>
+        <div class="nodata-note" id="nodata" style="display:none"></div>
+        <div class="legend-foot"><span class="swatch"></span>灰色空心點 = 該筆沒有這個指標的資料。</div>
+      </div>
+    </div>
+
+    <div>
+      <p class="eyebrow">圖層</p>
+      <div class="block">
+        <div class="row-between">
+          <div>
+            <div class="toggle-cap">熱力圖</div>
+            <div class="toggle-sub">依目前指標加權的密度分布</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="heatToggle"><span class="track"></span></label>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <p class="eyebrow">各場域（目前指標平均）</p>
+      <div class="block" id="sites"></div>
+    </div>
+
+    <div class="foot" id="foot"></div>
+  </aside>
+  <main id="map"></main>
+</div>
+
+<script id="seed-data" type="application/json">[{"createdAt":"2026-06-15T06:45:24Z","environment":{"airTempC":27,"apparentTempC":33.4,"aqiStalenessSeconds":2724.5635880231857,"aqiTime":"2026-06-15T06:00:00Z","humidityPct":88,"latitude":25.015991619411622,"longitude":121.53801898406839,"no2":60.1,"ozone":31,"pm10":20.4,"pm25":19.9,"precipitationMm":0.1,"source":"open-meteo","usAqi":74,"weatherCode":51,"weatherDesc":"毛毛雨","weatherStalenessSeconds":24.56358802318573,"weatherTime":"2026-06-15T06:45:00Z","windSpeedMs":0.16},"eventID":"E483056F-033B-4F0F-95D5-2AF23D45CEFB","gpsAccuracyM":8.336849970501401,"gpsLat":25.015991619411622,"gpsLng":121.53801898406839,"needsSurvey":true,"participantID":"P001","physiology":[],"schemaVersion":"1.0","siteID":"demo_site","siteName":"demo_site","syncState":"pending","triggerTimestamp":"2026-06-15T06:45:24Z","triggerType":"geofence_enter"},{"createdAt":"2026-06-15T05:34:37Z","environment":{"airTempC":26.2,"apparentTempC":32.2,"aqiStalenessSeconds":2077.2179379463196,"aqiTime":"2026-06-15T05:00:00Z","humidityPct":90,"latitude":25.016080865442326,"longitude":121.53799581801951,"no2":58,"ozone":33,"pm10":19.7,"pm25":19.1,"precipitationMm":0.6,"source":"open-meteo","usAqi":73,"weatherCode":80,"weatherDesc":"陣雨","weatherStalenessSeconds":277.2179379463196,"weatherTime":"2026-06-15T05:30:00Z","windSpeedMs":0.43},"eventID":"B6BE1877-C535-4172-9ABD-683C2412150C","gpsAccuracyM":14,"gpsLat":25.016080865442326,"gpsLng":121.53799581801951,"needsSurvey":false,"participantID":"P001","physiology":[],"schemaVersion":"1.0","siteID":"demo_site","siteName":"demo_site","survey":{"answers":[{"questionID":"mood","questionText":"此刻的心情","value":5},{"questionID":"stress","questionText":"此刻的壓力感","value":4},{"questionID":"restored","questionText":"此刻的放鬆／恢復感","value":5},{"questionID":"vitality","questionText":"此刻的活力","value":4},{"questionID":"liking","questionText":"對這個環境的喜歡程度","value":5}],"completedAt":"2026-06-15T05:41:03Z","durationSeconds":6.647166967391968,"eventID":"B6BE1877-C535-4172-9ABD-683C2412150C","instrument":"ema_v1","startedAt":"2026-06-15T05:40:56Z","surveyID":"4B714B6A-9C62-42E3-A25E-DD382B527B4B"},"syncState":"pending","triggerTimestamp":"2026-06-15T05:34:37Z","triggerType":"geofence_enter"},{"beatToBeat":{"beatCount":66,"eventID":"7D2E93C2-26AD-43AD-8974-A6E81C7AF628","ibiMs":[737.5342845916748,720.818042755127,739.4051551818848,705.040454864502,699.1848945617676,706.758975982666,715.6491279602051,727.4961471557617,746.363639831543,730.2513122558594,730.8368682861328,746.9453811645508,741.2233352661133,742.4154281616211,745.1353073120117,762.4492645263672,729.8221588134766,742.7444458007812,754.9667358398438,743.6370849609375,742.5861358642578,732.5992584228516,748.8613128662109,749.3190765380859,738.2678985595703,751.7604827880859,778.076171875,761.0816955566406,757.5817108154297,750.0019073486328,750,742.6834106445312,753.3702850341797,728.2314300537109,694.7193145751953,707.4928283691406,706.756591796875,715.6944274902344,730.9036254882812,743.3433532714844,717.8611755371094,768.8140869140625,768.3334350585938,740.7150268554688,732.91015625,732.9864501953125,717.9183959960938,711.0519409179688,722.625732421875,724.6932983398438,716.6290283203125,694.8890686035156,679.3594360351562,687.8280639648438,679.5272827148438,702.6863098144531,719.8410034179688,725.0747680664062,731.1325073242188,742.2599792480469,754.6577453613281,742.3057556152344,737.6480102539062,749.7138977050781,729.8164367675781,739.0823364257812],"inducedBy":"mindfulness_session","pnn50Percent":1.5384615384615385,"qualityFlag":"good","rmssdMs":15.928315043811644,"sdnnMs":21.287635909665127,"seriesID":"FBC0B5B8-D26A-473F-9E66-240A13721CD3","sessionEnd":"2026-06-15T04:08:13Z","sessionStart":"2026-06-15T04:07:13Z"},"createdAt":"2026-06-15T05:11:40Z","environment":{"airTempC":26.8,"apparentTempC":32.9,"aqiStalenessSeconds":700.4339849948883,"aqiTime":"2026-06-15T05:00:00Z","humidityPct":86,"latitude":25.013939914534976,"longitude":121.53994975720452,"no2":58,"ozone":33,"pm10":19.7,"pm25":19.1,"precipitationMm":0.1,"source":"open-meteo","usAqi":73,"weatherCode":51,"weatherDesc":"毛毛雨","weatherStalenessSeconds":700.4339849948883,"weatherTime":"2026-06-15T05:00:00Z","windSpeedMs":0.25},"eventID":"7D2E93C2-26AD-43AD-8974-A6E81C7AF628","gpsAccuracyM":2,"gpsLat":25.013939914534976,"gpsLng":121.53994975720452,"needsSurvey":true,"participantID":"P001","physiology":[{"acquisitionMode":"passive_background","eventID":"7D2E93C2-26AD-43AD-8974-A6E81C7AF628","hkSampleTime":"2026-06-15T05:02:32Z","hkSourceDevice":"Iphone X’s Apple Watch","hkUUID":"1D18F70E-8737-4C92-8D36-C9E76E4FE41F","metricType":"heart_rate","sampleID":"08AB7AA5-49E5-4427-B0F9-EABBA5A19209","stalenessSeconds":548.139755487442,"unit":"bpm","value":69},{"acquisitionMode":"passive_background","eventID":"7D2E93C2-26AD-43AD-8974-A6E81C7AF628","hkSampleTime":"2026-06-14T22:45:34Z","hkSourceDevice":"Iphone X’s Apple Watch","hkUUID":"DE89CDCA-C360-47D6-B55D-5739BC0B111D","metricType":"resting_heart_rate","sampleID":"FFACADE9-0419-462C-A661-1BAEDA8D5697","stalenessSeconds":23166.30341386795,"unit":"bpm","value":58},{"acquisitionMode":"passive_background","eventID":"7D2E93C2-26AD-43AD-8974-A6E81C7AF628","hkSampleTime":"2026-06-14T21:58:00Z","hkSourceDevice":"Iphone X’s Apple Watch","hkUUID":"7465A6A5-7257-4327-A17A-A286AB56D2D2","metricType":"respiratory_rate","sampleID":"E41237D3-D4B3-4CDF-90AF-201095D0E286","stalenessSeconds":26019.954164981842,"unit":"breaths/min","value":19},{"acquisitionMode":"passive_background","eventID":"7D2E93C2-26AD-43AD-8974-A6E81C7AF628","hkSampleTime":"2026-06-15T04:08:13Z","hkSourceDevice":"Iphone X’s Apple Watch","hkUUID":"543BFF69-BFDC-4C7D-B890-28204A34A8E4","metricType":"hrv_sdnn","sampleID":"DA7E600E-3947-491F-888F-3C23B0FE9535","stalenessSeconds":3807.287431359291,"unit":"ms","value":21.28763590966099},{"acquisitionMode":"passive_background","eventID":"7D2E93C2-26AD-43AD-8974-A6E81C7AF628","hkSampleTime":"2026-06-15T05:01:01Z","hkSourceDevice":"Iphone X’s Apple Watch","hkUUID":"565454C6-DA82-4522-B4D5-1048E077D7DB","metricType":"spo2","sampleID":"E43FFD5D-4309-4EC8-81C8-1398204C3477","stalenessSeconds":638.8649578094482,"unit":"%","value":95},{"acquisitionMode":"passive_background","eventID":"7D2E93C2-26AD-43AD-8974-A6E81C7AF628","hkSampleTime":"2026-06-14T22:00:00Z","hkSourceDevice":"Iphone X’s Apple Watch","hkUUID":"04D372C5-C1F0-448C-AE2F-B88B7E80E882","metricType":"wrist_temp","sampleID":"08D9564B-80F2-467C-9522-55B5652F38F6","stalenessSeconds":25899.61617720127,"unit":"°C","value":35.87397384643555},{"acquisitionMode":"passive_background","eventID":"7D2E93C2-26AD-43AD-8974-A6E81C7AF628","hkSampleTime":"2026-06-15T04:40:31Z","hkSourceDevice":"Iphone X’s Apple Watch","hkUUID":"52BDEB06-F71B-49D7-9D27-99EE508262CC","metricType":"audio_exposure_db","sampleID":"5AE145DD-D804-486E-A0BA-CA106035573B","stalenessSeconds":1868.4399390220642,"unit":"dBA","value":60.91572774016062},{"acquisitionMode":"passive_background","eventID":"7D2E93C2-26AD-43AD-8974-A6E81C7AF628","hkSampleTime":"2026-06-15T03:21:47Z","hkSourceDevice":"Iphone X’s Apple Watch","hkUUID":"217B8C38-1568-4572-8B97-D451E46292BA","metricType":"vo2max","sampleID":"559044CD-8F06-4BE3-A516-D7A8F1F7CF0F","stalenessSeconds":6592.49393594265,"unit":"mL/kg·min","value":19.84}],"schemaVersion":"1.0","siteID":"demo_site","siteName":"示範場域","syncState":"pending","triggerTimestamp":"2026-06-15T05:11:40Z","triggerType":"geofence_enter"},{"beatToBeat":{"beatCount":66,"eventID":"E0582C22-F0E0-4D20-8B6D-1EE4417817EB","ibiMs":[737.5342845916748,720.818042755127,739.4051551818848,705.040454864502,699.1848945617676,706.758975982666,715.6491279602051,727.4961471557617,746.363639831543,730.2513122558594,730.8368682861328,746.9453811645508,741.2233352661133,742.4154281616211,745.1353073120117,762.4492645263672,729.8221588134766,742.7444458007812,754.9667358398438,743.6370849609375,742.5861358642578,732.5992584228516,748.8613128662109,749.3190765380859,738.2678985595703,751.7604827880859,778.076171875,761.0816955566406,757.5817108154297,750.0019073486328,750,742.6834106445312,753.3702850341797,728.2314300537109,694.7193145751953,707.4928283691406,706.756591796875,715.6944274902344,730.9036254882812,743.3433532714844,717.8611755371094,768.8140869140625,768.3334350585938,740.7150268554688,732.91015625,732.9864501953125,717.9183959960938,711.0519409179688,722.625732421875,724.6932983398438,716.6290283203125,694.8890686035156,679.3594360351562,687.8280639648438,679.5272827148438,702.6863098144531,719.8410034179688,725.0747680664062,731.1325073242188,742.2599792480469,754.6577453613281,742.3057556152344,737.6480102539062,749.7138977050781,729.8164367675781,739.0823364257812],"inducedBy":"mindfulness_session","pnn50Percent":1.5384615384615385,"qualityFlag":"good","rmssdMs":15.928315043811644,"sdnnMs":21.287635909665127,"seriesID":"EE231F2B-EC36-41FD-B0BA-0569C29A51DE","sessionEnd":"2026-06-15T04:08:13Z","sessionStart":"2026-06-15T04:07:13Z"},"createdAt":"2026-06-15T05:06:43Z","environment":{"airTempC":26.8,"apparentTempC":32.9,"aqiStalenessSeconds":403.8670480251312,"aqiTime":"2026-06-15T05:00:00Z","humidityPct":86,"latitude":25.013939914534976,"longitude":121.53994975720452,"no2":58,"ozone":33,"pm10":19.7,"pm25":19.1,"precipitationMm":0.1,"source":"open-meteo","usAqi":73,"weatherCode":51,"weatherDesc":"毛毛雨","weatherStalenessSeconds":403.8670480251312,"weatherTime":"2026-06-15T05:00:00Z","windSpeedMs":0.25},"eventID":"E0582C22-F0E0-4D20-8B6D-1EE4417817EB","gpsAccuracyM":2,"gpsLat":25.013939914534976,"gpsLng":121.53994975720452,"needsSurvey":true,"participantID":"P001","physiology":[{"acquisitionMode":"passive_background","eventID":"E0582C22-F0E0-4D20-8B6D-1EE4417817EB","hkSampleTime":"2026-06-15T05:01:01Z","hkSourceDevice":"Iphone X’s Apple Watch","hkUUID":"FC5B2C1C-59DE-4339-9B74-211788B2EC7E","metricType":"heart_rate","sampleID":"146C3660-AA42-49B2-9BF6-6A5ECF9E62EF","stalenessSeconds":342.29802083969116,"unit":"bpm","value":73},{"acquisitionMode":"passive_background","eventID":"E0582C22-F0E0-4D20-8B6D-1EE4417817EB","hkSampleTime":"2026-06-14T22:45:34Z","hkSourceDevice":"Iphone X’s Apple Watch","hkUUID":"DE89CDCA-C360-47D6-B55D-5739BC0B111D","metricType":"resting_heart_rate","sampleID":"E7B063DF-A29A-4FF6-BA6F-839C1B14CF09","stalenessSeconds":22869.736476898193,"unit":"bpm","value":58},{"acquisitionMode":"passive_background","eventID":"E0582C22-F0E0-4D20-8B6D-1EE4417817EB","hkSampleTime":"2026-06-14T21:58:00Z","hkSourceDevice":"Iphone X’s Apple Watch","hkUUID":"7465A6A5-7257-4327-A17A-A286AB56D2D2","metricType":"respiratory_rate","sampleID":"4F1E1F50-3653-4842-BAC2-410B24E5A11B","stalenessSeconds":25723.387228012085,"unit":"breaths/min","value":19},{"acquisitionMode":"passive_background","eventID":"E0582C22-F0E0-4D20-8B6D-1EE4417817EB","hkSampleTime":"2026-06-15T04:08:13Z","hkSourceDevice":"Iphone X’s Apple Watch","hkUUID":"543BFF69-BFDC-4C7D-B890-28204A34A8E4","metricType":"hrv_sdnn","sampleID":"ABEC26F7-7E75-44FA-AF01-6BF5D6AC850F","stalenessSeconds":3510.720494389534,"unit":"ms","value":21.28763590966099},{"acquisitionMode":"passive_background","eventID":"E0582C22-F0E0-4D20-8B6D-1EE4417817EB","hkSampleTime":"2026-06-15T05:01:01Z","hkSourceDevice":"Iphone X’s Apple Watch","hkUUID":"565454C6-DA82-4522-B4D5-1048E077D7DB","metricType":"spo2","sampleID":"6522E414-6765-48A0-AD4C-E239292F38D4","stalenessSeconds":342.29802083969116,"unit":"%","value":95},{"acquisitionMode":"passive_background","eventID":"E0582C22-F0E0-4D20-8B6D-1EE4417817EB","hkSampleTime":"2026-06-14T22:00:00Z","hkSourceDevice":"Iphone X’s Apple Watch","hkUUID":"04D372C5-C1F0-448C-AE2F-B88B7E80E882","metricType":"wrist_temp","sampleID":"E730DE6E-63FB-4853-91B0-AB8B552356E3","stalenessSeconds":25603.049240231514,"unit":"°C","value":35.87397384643555},{"acquisitionMode":"passive_background","eventID":"E0582C22-F0E0-4D20-8B6D-1EE4417817EB","hkSampleTime":"2026-06-15T04:40:31Z","hkSourceDevice":"Iphone X’s Apple Watch","hkUUID":"52BDEB06-F71B-49D7-9D27-99EE508262CC","metricType":"audio_exposure_db","sampleID":"AA2B396E-595C-4B80-B676-B13D71361954","stalenessSeconds":1571.8730020523071,"unit":"dBA","value":60.91572774016062},{"acquisitionMode":"passive_background","eventID":"E0582C22-F0E0-4D20-8B6D-1EE4417817EB","hkSampleTime":"2026-06-15T03:21:47Z","hkSourceDevice":"Iphone X’s Apple Watch","hkUUID":"217B8C38-1568-4572-8B97-D451E46292BA","metricType":"vo2max","sampleID":"C48F19B3-4180-4092-85B9-E85EC6D97C0B","stalenessSeconds":6295.926998972893,"unit":"mL/kg·min","value":19.84}],"schemaVersion":"1.0","siteID":"demo_site","siteName":"示範場域","syncState":"pending","triggerTimestamp":"2026-06-15T05:06:43Z","triggerType":"geofence_enter"},{"beatToBeat":{"beatCount":66,"eventID":"C9CEF4BF-66B2-45EB-902E-A33950CF3678","ibiMs":[737.5342845916748,720.818042755127,739.4051551818848,705.040454864502,699.1848945617676,706.758975982666,715.6491279602051,727.4961471557617,746.363639831543,730.2513122558594,730.8368682861328,746.9453811645508,741.2233352661133,742.4154281616211,745.1353073120117,762.4492645263672,729.8221588134766,742.7444458007812,754.9667358398438,743.6370849609375,742.5861358642578,732.5992584228516,748.8613128662109,749.3190765380859,738.2678985595703,751.7604827880859,778.076171875,761.0816955566406,757.5817108154297,750.0019073486328,750,742.6834106445312,753.3702850341797,728.2314300537109,694.7193145751953,707.4928283691406,706.756591796875,715.6944274902344,730.9036254882812,743.3433532714844,717.8611755371094,768.8140869140625,768.3334350585938,740.7150268554688,732.91015625,732.9864501953125,717.9183959960938,711.0519409179688,722.625732421875,724.6932983398438,716.6290283203125,694.8890686035156,679.3594360351562,687.8280639648438,679.5272827148438,702.6863098144531,719.8410034179688,725.0747680664062,731.1325073242188,742.2599792480469,754.6577453613281,742.3057556152344,737.6480102539062,749.7138977050781,729.8164367675781,739.0823364257812],"inducedBy":"mindfulness_session","pnn50Percent":1.5384615384615385,"qualityFlag":"good","rmssdMs":15.928315043811644,"sdnnMs":21.287635909665127,"seriesID":"CC25B809-6423-458A-87AF-E8843E2FAFD7","sessionEnd":"2026-06-15T04:08:13Z","sessionStart":"2026-06-15T04:07:13Z"},"createdAt":"2026-06-15T04:55:09Z","environment":{"airTempC":26.7,"apparentTempC":33,"aqiStalenessSeconds":3309.3256670236588,"aqiTime":"2026-06-15T04:00:00Z","humidityPct":87,"latitude":25.01402792687547,"longitude":121.53975568802265,"no2":56.4,"ozone":34,"pm10":20,"pm25":19.4,"precipitationMm":0.1,"source":"open-meteo","usAqi":73,"weatherCode":51,"weatherDesc":"毛毛雨","weatherStalenessSeconds":609.3256670236588,"weatherTime":"2026-06-15T04:45:00Z","windSpeedMs":0.11},"eventID":"C9CEF4BF-66B2-45EB-902E-A33950CF3678","gpsAccuracyM":16.872707702772022,"gpsLat":25.01402792687547,"gpsLng":121.53975568802265,"needsSurvey":true,"participantID":"P001","physiology":[{"acquisitionMode":"passive_background","eventID":"C9CEF4BF-66B2-45EB-902E-A33950CF3678","hkSampleTime":"2026-06-15T04:51:22Z","hkSourceDevice":"Iphone X’s Apple Watch","hkUUID":"3BA7CCE9-A577-44DF-9625-9B96C0025DCB","metricType":"heart_rate","sampleID":"B3EA3FD8-391B-450B-93EC-378F8A47549D","stalenessSeconds":226.78009498119354,"unit":"bpm","value":113},{"acquisitionMode":"passive_background","eventID":"C9CEF4BF-66B2-45EB-902E-A33950CF3678","hkSampleTime":"2026-06-14T22:45:34Z","hkSourceDevice":"Iphone X’s Apple Watch","hkUUID":"DE89CDCA-C360-47D6-B55D-5739BC0B111D","metricType":"resting_heart_rate","sampleID":"C4C5139C-EE8C-4366-A050-CCF95105CEFB","stalenessSeconds":22175.19509589672,"unit":"bpm","value":58},{"acquisitionMode":"passive_background","eventID":"C9CEF4BF-66B2-45EB-902E-A33950CF3678","hkSampleTime":"2026-06-14T21:58:00Z","hkSourceDevice":"Iphone X’s Apple Watch","hkUUID":"7465A6A5-7257-4327-A17A-A286AB56D2D2","metricType":"respiratory_rate","sampleID":"E1015134-229A-4CB7-AAFD-DFA8513075AF","stalenessSeconds":25028.845847010612,"unit":"breaths/min","value":19},{"acquisitionMode":"passive_background","eventID":"C9CEF4BF-66B2-45EB-902E-A33950CF3678","hkSampleTime":"2026-06-15T04:08:13Z","hkSourceDevice":"Iphone X’s Apple Watch","hkUUID":"543BFF69-BFDC-4C7D-B890-28204A34A8E4","metricType":"hrv_sdnn","sampleID":"F4724C4C-9728-4B61-8CFB-0915A3C929B8","stalenessSeconds":2816.1791133880615,"unit":"ms","value":21.28763590966099},{"acquisitionMode":"passive_background","eventID":"C9CEF4BF-66B2-45EB-902E-A33950CF3678","hkSampleTime":"2026-06-15T03:24:07Z","hkSourceDevice":"Iphone X’s Apple Watch","hkUUID":"BF33B90B-023F-4432-AF9F-F4FD0771DF51","metricType":"spo2","sampleID":"540C0E82-5539-4688-A482-208E533D28FF","stalenessSeconds":5461.63581430912,"unit":"%","value":96},{"acquisitionMode":"passive_background","eventID":"C9CEF4BF-66B2-45EB-902E-A33950CF3678","hkSampleTime":"2026-06-14T22:00:00Z","hkSourceDevice":"Iphone X’s Apple Watch","hkUUID":"04D372C5-C1F0-448C-AE2F-B88B7E80E882","metricType":"wrist_temp","sampleID":"D06CB795-FCF1-4056-92F2-81747BBC7A76","stalenessSeconds":24908.50785923004,"unit":"°C","value":35.87397384643555},{"acquisitionMode":"passive_background","eventID":"C9CEF4BF-66B2-45EB-902E-A33950CF3678","hkSampleTime":"2026-06-15T04:40:31Z","hkSourceDevice":"Iphone X’s Apple Watch","hkUUID":"52BDEB06-F71B-49D7-9D27-99EE508262CC","metricType":"audio_exposure_db","sampleID":"F2733F95-FC30-414F-9C22-70993099A558","stalenessSeconds":877.3316210508347,"unit":"dBA","value":60.91572774016062},{"acquisitionMode":"passive_background","eventID":"C9CEF4BF-66B2-45EB-902E-A33950CF3678","hkSampleTime":"2026-06-15T03:21:47Z","hkSourceDevice":"Iphone X’s Apple Watch","hkUUID":"217B8C38-1568-4572-8B97-D451E46292BA","metricType":"vo2max","sampleID":"9381216B-467F-4F09-A27D-016B885D701A","stalenessSeconds":5601.38561797142,"unit":"mL/kg·min","value":19.84}],"schemaVersion":"1.0","siteID":"demo_site","siteName":"示範場域","syncState":"pending","triggerTimestamp":"2026-06-15T04:55:09Z","triggerType":"geofence_enter"},{"beatToBeat":{"beatCount":66,"eventID":"4853AF41-EF54-4AE8-9DD0-DA2686B859B3","ibiMs":[737.5342845916748,720.818042755127,739.4051551818848,705.040454864502,699.1848945617676,706.758975982666,715.6491279602051,727.4961471557617,746.363639831543,730.2513122558594,730.8368682861328,746.9453811645508,741.2233352661133,742.4154281616211,745.1353073120117,762.4492645263672,729.8221588134766,742.7444458007812,754.9667358398438,743.6370849609375,742.5861358642578,732.5992584228516,748.8613128662109,749.3190765380859,738.2678985595703,751.7604827880859,778.076171875,761.0816955566406,757.5817108154297,750.0019073486328,750,742.6834106445312,753.3702850341797,728.2314300537109,694.7193145751953,707.4928283691406,706.756591796875,715.6944274902344,730.9036254882812,743.3433532714844,717.8611755371094,768.8140869140625,768.3334350585938,740.7150268554688,732.91015625,732.9864501953125,717.9183959960938,711.0519409179688,722.625732421875,724.6932983398438,716.6290283203125,694.8890686035156,679.3594360351562,687.8280639648438,679.5272827148438,702.6863098144531,719.8410034179688,725.0747680664062,731.1325073242188,742.2599792480469,754.6577453613281,742.3057556152344,737.6480102539062,749.7138977050781,729.8164367675781,739.0823364257812],"inducedBy":"mindfulness_session","pnn50Percent":1.5384615384615385,"qualityFlag":"good","rmssdMs":15.928315043811644,"sdnnMs":21.287635909665127,"seriesID":"DCED8AB2-8F0D-4CD2-B677-562D7FF24856","sessionEnd":"2026-06-15T04:08:13Z","sessionStart":"2026-06-15T04:07:13Z"},"createdAt":"2026-06-15T04:26:11Z","environment":{"airTempC":26,"apparentTempC":32.1,"aqiStalenessSeconds":1571.9557939767838,"aqiTime":"2026-06-15T04:00:00Z","humidityPct":93,"latitude":25.013895079021967,"longitude":121.53983902868092,"no2":56.4,"ozone":34,"pm10":20,"pm25":19.4,"precipitationMm":0.2,"source":"open-meteo","usAqi":73,"weatherCode":53,"weatherDesc":"毛毛雨","weatherStalenessSeconds":671.9557939767838,"weatherTime":"2026-06-15T04:15:00Z","windSpeedMs":0.99},"eventID":"4853AF41-EF54-4AE8-9DD0-DA2686B859B3","gpsAccuracyM":7.195014,"gpsLat":25.013895079021967,"gpsLng":121.53983902868092,"needsSurvey":false,"participantID":"P001","physiology":[{"acquisitionMode":"passive_background","eventID":"4853AF41-EF54-4AE8-9DD0-DA2686B859B3","hkSampleTime":"2026-06-15T04:20:30Z","hkSourceDevice":"Iphone X’s Apple Watch","hkUUID":"D2BE3735-2B48-464F-99B8-F48C29325203","metricType":"heart_rate","sampleID":"AC550F0F-ED90-46CC-80B1-E52F5679ED8E","stalenessSeconds":341.28656458854675,"unit":"bpm","value":71},{"acquisitionMode":"passive_background","eventID":"4853AF41-EF54-4AE8-9DD0-DA2686B859B3","hkSampleTime":"2026-06-14T22:45:34Z","hkSourceDevice":"Iphone X’s Apple Watch","hkUUID":"DE89CDCA-C360-47D6-B55D-5739BC0B111D","metricType":"resting_heart_rate","sampleID":"86FB09A5-F697-46FD-9688-168769F567B1","stalenessSeconds":20437.825222849846,"unit":"bpm","value":58},{"acquisitionMode":"passive_background","eventID":"4853AF41-EF54-4AE8-9DD0-DA2686B859B3","hkSampleTime":"2026-06-14T21:58:00Z","hkSourceDevice":"Iphone X’s Apple Watch","hkUUID":"7465A6A5-7257-4327-A17A-A286AB56D2D2","metricType":"respiratory_rate","sampleID":"654FD748-6F94-4437-9DD9-E4A42426E2C2","stalenessSeconds":23291.475973963737,"unit":"breaths/min","value":19},{"acquisitionMode":"passive_background","eventID":"4853AF41-EF54-4AE8-9DD0-DA2686B859B3","hkSampleTime":"2026-06-15T04:08:13Z","hkSourceDevice":"Iphone X’s Apple Watch","hkUUID":"543BFF69-BFDC-4C7D-B890-28204A34A8E4","metricType":"hrv_sdnn","sampleID":"5F50DD62-7250-4F5E-88B7-E99E98F4AE91","stalenessSeconds":1078.8092403411865,"unit":"ms","value":21.28763590966099},{"acquisitionMode":"passive_background","eventID":"4853AF41-EF54-4AE8-9DD0-DA2686B859B3","hkSampleTime":"2026-06-15T03:24:07Z","hkSourceDevice":"Iphone X’s Apple Watch","hkUUID":"BF33B90B-023F-4432-AF9F-F4FD0771DF51","metricType":"spo2","sampleID":"7F313A2B-5483-4147-8D0E-529E7297CD4B","stalenessSeconds":3724.265941262245,"unit":"%","value":96},{"acquisitionMode":"passive_background","eventID":"4853AF41-EF54-4AE8-9DD0-DA2686B859B3","hkSampleTime":"2026-06-14T22:00:00Z","hkSourceDevice":"Iphone X’s Apple Watch","hkUUID":"04D372C5-C1F0-448C-AE2F-B88B7E80E882","metricType":"wrist_temp","sampleID":"FE27D619-5393-42C8-9B2B-0E1C166FEEA3","stalenessSeconds":23171.137986183167,"unit":"°C","value":35.87397384643555},{"acquisitionMode":"passive_background","eventID":"4853AF41-EF54-4AE8-9DD0-DA2686B859B3","hkSampleTime":"2026-06-15T04:10:32Z","hkSourceDevice":"Iphone X’s Apple Watch","hkUUID":"11EB0F7A-C2E4-46E2-A50A-8CFEE562EE7E","metricType":"audio_exposure_db","sampleID":"AE1BAA72-15A7-4F3E-9219-9C024E263174","stalenessSeconds":938.9650000333786,"unit":"dBA","value":67.29698824794593},{"acquisitionMode":"passive_background","eventID":"4853AF41-EF54-4AE8-9DD0-DA2686B859B3","hkSampleTime":"2026-06-15T03:21:47Z","hkSourceDevice":"Iphone X’s Apple Watch","hkUUID":"217B8C38-1568-4572-8B97-D451E46292BA","metricType":"vo2max","sampleID":"99B5C8E0-DC74-4B0D-A804-DD7CFFA72903","stalenessSeconds":3864.0157449245453,"unit":"mL/kg·min","value":19.84}],"schemaVersion":"1.0","siteID":"demo_site","siteName":"示範場域","survey":{"answers":[{"questionID":"mood","questionText":"此刻的心情","value":5},{"questionID":"stress","questionText":"此刻的壓力感","value":5},{"questionID":"restored","questionText":"此刻的放鬆／恢復感","value":4},{"questionID":"vitality","questionText":"此刻的活力","value":4},{"questionID":"liking","questionText":"對這個環境的喜歡程度","value":5}],"completedAt":"2026-06-15T04:29:49Z","durationSeconds":6.343641996383667,"eventID":"4853AF41-EF54-4AE8-9DD0-DA2686B859B3","instrument":"ema_v1","startedAt":"2026-06-15T04:29:43Z","surveyID":"13D83330-2EE0-47F7-9BBE-985679843D56"},"syncState":"pending","triggerTimestamp":"2026-06-15T04:26:11Z","triggerType":"geofence_enter"}]</script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<script>
+"use strict";
+
+/* ---------- 指標目錄 ---------- */
+const METRICS = [
+  {key:'heart_rate',         group:'生理', label:'心率',        unit:'bpm',        type:'phys'},
+  {key:'resting_heart_rate', group:'生理', label:'靜息心率',    unit:'bpm',        type:'phys'},
+  {key:'hrv_sdnn',           group:'生理', label:'HRV (SDNN)',  unit:'ms',         type:'phys'},
+  {key:'spo2',               group:'生理', label:'血氧 SpO₂',   unit:'%',          type:'phys'},
+  {key:'respiratory_rate',   group:'生理', label:'呼吸率',      unit:'/min',       type:'phys'},
+  {key:'vo2max',             group:'生理', label:'VO₂max',      unit:'mL/kg/min',  type:'phys'},
+  {key:'wrist_temp',         group:'生理', label:'手腕溫度',    unit:'°C',         type:'phys'},
+  {key:'audio_exposure_db',  group:'生理', label:'環境音量',    unit:'dB',         type:'phys'},
+  {key:'mood',               group:'主觀', label:'心情',        unit:'1–5',        type:'survey'},
+  {key:'stress',             group:'主觀', label:'壓力感',      unit:'1–5',        type:'survey'},
+  {key:'restored',           group:'主觀', label:'放鬆／恢復',  unit:'1–5',        type:'survey'},
+  {key:'vitality',           group:'主觀', label:'活力',        unit:'1–5',        type:'survey'},
+  {key:'liking',             group:'主觀', label:'環境喜好',    unit:'1–5',        type:'survey'},
+  {key:'airTempC',           group:'環境', label:'氣溫',        unit:'°C',         type:'env'},
+  {key:'apparentTempC',      group:'環境', label:'體感溫度',    unit:'°C',         type:'env'},
+  {key:'humidityPct',        group:'環境', label:'濕度',        unit:'%',          type:'env'},
+  {key:'windSpeedMs',        group:'環境', label:'風速',        unit:'m/s',        type:'env'},
+  {key:'usAqi',              group:'環境', label:'AQI (US)',    unit:'',           type:'env'},
+  {key:'pm25',               group:'環境', label:'PM2.5',       unit:'µg/m³',      type:'env'},
+  {key:'pm10',               group:'環境', label:'PM10',        unit:'µg/m³',      type:'env'},
+  {key:'no2',                group:'環境', label:'NO₂',         unit:'µg/m³',      type:'env'},
+  {key:'ozone',              group:'環境', label:'臭氧 O₃',     unit:'µg/m³',      type:'env'},
+];
+const METRIC_BY_KEY = Object.fromEntries(METRICS.map(m=>[m.key,m]));
+const TRIGGER_LABEL = {geofence_enter:'圍欄進入', geofence_exit:'圍欄離開', scheduled:'排程', manual:'手動'};
+
+/* ---------- 取值 ---------- */
+function metricValue(ev, m){
+  if(!m) return null;
+  if(m.type==='phys'){
+    const xs=(ev.physiology||[]).filter(p=>p.metricType===m.key).map(p=>p.value).filter(v=>typeof v==='number');
+    return xs.length ? xs.reduce((a,b)=>a+b,0)/xs.length : null;
+  }
+  if(m.type==='survey'){
+    const s=ev.survey; if(!s||!Array.isArray(s.answers)) return null;
+    const a=s.answers.find(x=>x.questionID===m.key);
+    return a && typeof a.value==='number' ? a.value : null;
+  }
+  if(m.type==='env'){
+    const e=ev.environment; if(!e) return null;
+    return typeof e[m.key]==='number' ? e[m.key] : null;
+  }
+  return null;
+}
+
+/* ---------- 顏色刻度（teal → sand → clay） ---------- */
+const SCALE=['#1b5e5a','#e7c46b','#c0573b'];
+const NODATA_FILL='#d7d2c4', NODATA_STROKE='#b3ad9d';
+function hex2rgb(h){h=h.replace('#','');return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)];}
+function colorFor(t){
+  t=Math.max(0,Math.min(1,isFinite(t)?t:0.5));
+  const seg=t<0.5?0:1, lt=t<0.5?t/0.5:(t-0.5)/0.5;
+  const a=hex2rgb(SCALE[seg]), b=hex2rgb(SCALE[seg+1]);
+  const c=[0,1,2].map(i=>Math.round(a[i]+(b[i]-a[i])*lt));
+  return `rgb(${c[0]},${c[1]},${c[2]})`;
+}
+function darken(rgb){
+  const m=rgb.match(/\d+/g).map(Number).map(x=>Math.round(x*0.62));
+  return `rgb(${m[0]},${m[1]},${m[2]})`;
+}
+
+/* ---------- 抖動（讓重疊點散開；真實座標仍存 popup） ---------- */
+function hashStr(s){let h=2166136261>>>0;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)>>>0;}return h;}
+function jittered(ev){
+  const h=hashStr(ev.eventID||(''+ev.gpsLat+ev.gpsLng));
+  const dy=(((h&0xffff)/0xffff)-0.5)*0.00013;
+  const dx=((((h>>>16)&0xffff)/0xffff)-0.5)*0.00013;
+  return [ev.gpsLat+dy, ev.gpsLng+dx];
+}
+
+function fmt(v,dp){ if(v==null||!isFinite(v))return '—'; const f=Math.abs(v)>=100?0:(dp==null?1:dp); return Number(v).toFixed(f); }
+
+/* ---------- 地圖 ---------- */
+const map=L.map('map',{zoomControl:true,scrollWheelZoom:true}).setView([25.0153,121.5390],15);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{
+  attribution:'&copy; OpenStreetMap &copy; CARTO', maxZoom:20, subdomains:'abcd'
+}).addTo(map);
+const markerLayer=L.layerGroup().addTo(map);
+let heatLayer=null;
+
+let DATA=[];
+try{ DATA=JSON.parse(document.getElementById('seed-data').textContent)||[]; }catch(e){ DATA=[]; }
+if(!Array.isArray(DATA)) DATA=[DATA];
+
+/* ---------- 下拉選單（分組） ---------- */
+function buildMetricSelect(){
+  const sel=document.getElementById('metric');
+  sel.innerHTML='';
+  ['生理','主觀','環境'].forEach(g=>{
+    const og=document.createElement('optgroup'); og.label=g;
+    METRICS.filter(m=>m.group===g).forEach(m=>{
+      const o=document.createElement('option'); o.value=m.key; o.textContent=m.label+(m.unit?` (${m.unit})`:''); og.appendChild(o);
+    });
+    sel.appendChild(og);
+  });
+  sel.value='heart_rate';
+}
+
+/* ---------- popup ---------- */
+function popupHTML(ev){
+  const when=ev.triggerTimestamp ? new Date(ev.triggerTimestamp).toLocaleString('zh-TW',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+  const trig=TRIGGER_LABEL[ev.triggerType]||ev.triggerType||'';
+  const acc=ev.gpsAccuracyM!=null?` (±${fmt(ev.gpsAccuracyM,0)}m)`:'';
+  // 生理
+  let phys='<span class="muted">無（這筆沒戴錶）</span>';
+  if(Array.isArray(ev.physiology)&&ev.physiology.length){
+    const seen={}; const chips=[];
+    ev.physiology.forEach(p=>{
+      if(seen[p.metricType])return; seen[p.metricType]=1;
+      const m=METRIC_BY_KEY[p.metricType];
+      chips.push(`<span class="chip">${m?m.label:p.metricType} ${fmt(p.value)}${p.unit?(' '+p.unit):''}</span>`);
+    });
+    phys=`<div class="chips">${chips.join('')}</div>`;
+  }
+  // 環境
+  let env='<span class="muted">無</span>';
+  const e=ev.environment;
+  if(e){
+    const bits=[];
+    if(e.airTempC!=null)bits.push(`氣溫 ${fmt(e.airTempC)}°C`);
+    if(e.humidityPct!=null)bits.push(`濕度 ${fmt(e.humidityPct,0)}%`);
+    if(e.usAqi!=null)bits.push(`AQI ${fmt(e.usAqi,0)}`);
+    if(e.pm25!=null)bits.push(`PM2.5 ${fmt(e.pm25)}`);
+    if(e.windSpeedMs!=null)bits.push(`風 ${fmt(e.windSpeedMs)}m/s`);
+    env=`<div class="kv">${bits.join(' · ')}</div>`+(e.weatherDesc?`<div class="muted">${e.weatherDesc}</div>`:'');
+  }
+  // 問卷
+  let sv='<span class="muted">待補</span>';
+  if(ev.survey&&Array.isArray(ev.survey.answers)){
+    const chips=ev.survey.answers.map(a=>{
+      const m=METRIC_BY_KEY[a.questionID];
+      return `<span class="chip hl">${m?m.label:a.questionID} ${a.value}</span>`;
+    });
+    sv=`<div class="chips">${chips.join('')}</div>`;
+  }
+  return `<div class="pop">
+    <div><b class="site">${ev.siteName||'（未命名場域）'}</b>${trig?`<span class="badge">${trig}</span>`:''}</div>
+    <div class="when">${when}</div>
+    <div class="grp"><div class="h">生理</div>${phys}</div>
+    <div class="grp"><div class="h">環境</div>${env}</div>
+    <div class="grp"><div class="h">問卷</div>${sv}</div>
+    <div class="grp"><div class="h">位置</div><div class="kv">${fmt(ev.gpsLat,5)}, ${fmt(ev.gpsLng,5)}${acc}</div></div>
+  </div>`;
+}
+
+/* ---------- 渲染 ---------- */
+function currentMetric(){ return METRIC_BY_KEY[document.getElementById('metric').value]; }
+
+function render(fit){
+  const m=currentMetric();
+  markerLayer.clearLayers();
+  if(heatLayer){map.removeLayer(heatLayer);heatLayer=null;}
+
+  const vals=DATA.map(ev=>metricValue(ev,m)).filter(v=>v!=null&&isFinite(v));
+  const lo=vals.length?Math.min(...vals):0, hi=vals.length?Math.max(...vals):1;
+  const span=(hi-lo)||1;
+  const pts=[], heatPts=[];
+
+  DATA.forEach(ev=>{
+    if(typeof ev.gpsLat!=='number'||typeof ev.gpsLng!=='number')return;
+    const pos=jittered(ev); pts.push(pos);
+    const v=metricValue(ev,m);
+    const has=v!=null&&isFinite(v);
+    const t=has?(v-lo)/span:0.5;
+    const fill=has?colorFor(t):NODATA_FILL;
+    L.circleMarker(pos,{
+      radius:9, weight:has?1.6:1.4,
+      color:has?darken(fill):NODATA_STROKE,
+      fillColor:fill, fillOpacity:has?0.9:0.55, dashArray:has?null:'2 2'
+    }).bindPopup(popupHTML(ev),{maxWidth:280}).addTo(markerLayer);
+    if(has) heatPts.push([pos[0],pos[1],0.25+0.75*t]);
+  });
+
+  if(document.getElementById('heatToggle').checked && heatPts.length){
+    heatLayer=L.heatLayer(heatPts,{radius:38,blur:26,minOpacity:0.25,
+      gradient:{0.0:'#1b5e5a',0.5:'#e7c46b',1.0:'#c0573b'}}).addTo(map);
+  }
+
+  drawLegend(m,lo,hi,vals.length);
+  drawSites(m,lo,span,vals.length);
+  document.getElementById('foot').textContent=`共 ${DATA.length} 筆事件 · 點一下圓點看完整明細 · 重疊點已微幅散開以便點選`;
+  if(fit&&pts.length){ map.fitBounds(L.latLngBounds(pts).pad(0.45),{maxZoom:17}); }
+}
+
+function drawLegend(m,lo,hi,n){
+  document.getElementById('legendName').innerHTML=`${m.label} ${m.unit?`<small>${m.unit}</small>`:''}`;
+  document.getElementById('gradient').style.background=`linear-gradient(90deg, ${SCALE[0]}, ${SCALE[1]}, ${SCALE[2]})`;
+  const nd=document.getElementById('nodata');
+  if(n===0){
+    document.getElementById('scaleMin').textContent='';
+    document.getElementById('scaleMax').textContent='';
+    nd.style.display='block'; nd.textContent='這 6 筆目前都沒有這個指標的數值。';
+  }else{
+    document.getElementById('scaleMin').textContent='低 '+fmt(lo);
+    document.getElementById('scaleMax').textContent=fmt(hi)+' 高';
+    nd.style.display='none';
+  }
+}
+
+function drawSites(m,lo,span,n){
+  const box=document.getElementById('sites');
+  const groups={};
+  DATA.forEach(ev=>{
+    const k=ev.siteName||'（未命名）';
+    (groups[k]=groups[k]||[]).push(ev);
+  });
+  const rows=Object.entries(groups).map(([name,evs])=>{
+    const vs=evs.map(e=>metricValue(e,m)).filter(v=>v!=null&&isFinite(v));
+    const mean=vs.length?vs.reduce((a,b)=>a+b,0)/vs.length:null;
+    const t=(mean!=null&&n)?(mean-lo)/span:null;
+    const col=t!=null?colorFor(t):NODATA_FILL;
+    return `<div class="site">
+      <span class="dot" style="background:${col}"></span>
+      <span class="nm">${name}</span>
+      <span class="ct">${evs.length} 筆</span>
+      <span class="val">${mean!=null?fmt(mean):'—'}</span>
+    </div>`;
+  });
+  box.innerHTML=rows.join('')||'<div class="muted" style="font-size:12px;color:var(--ink-faint)">無資料</div>';
+}
+
+/* ---------- 載入檔 ---------- */
+document.getElementById('loadBtn').onclick=()=>document.getElementById('fileInput').click();
+document.getElementById('fileInput').onchange=ev=>{
+  const f=ev.target.files&&ev.target.files[0]; if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      let d=JSON.parse(r.result); if(!Array.isArray(d))d=[d];
+      DATA=d;
+      document.getElementById('fileMeta').innerHTML=`目前顯示：<b>${f.name}</b><br>${d.length} 筆事件`;
+      render(true);
+    }catch(err){ alert('讀取失敗：'+err.message); }
+  };
+  r.readAsText(f);
+};
+document.getElementById('metric').onchange=()=>render(false);
+document.getElementById('heatToggle').onchange=()=>render(false);
+
+/* ---------- start ---------- */
+buildMetricSelect();
+render(true);
+</script>
+</body>
+</html>
