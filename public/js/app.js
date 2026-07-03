@@ -2135,8 +2135,80 @@
       "Site-analysis JSON exported and copied to clipboard. Paste it into the console check-in."
     ));
   }
+  // ============================================================
+  // heals-chain/1 匯出（01-foundation）：把本站基地分析寫入單一專案檔
+  // ============================================================
+  function hxFoundationBlock() {
+    var a = lastAnalysis || {}, f = {};
+    if (a.site_area_ha != null) f.area = a.site_area_ha;
+    if (a.population != null) f.population = a.population;
+    if (a.climate != null) f.climate = a.climate;
+    if (a.healing_green_intervention != null) f.healingGreen = a.healing_green_intervention;
+    if (a.biodiversity != null) f.biodiversity = a.biodiversity;
+    if (a.green != null) f.green = a.green;
+    if (a.heat != null) f.heat = a.heat;
+    if (a.air_quality != null) f.airQuality = a.air_quality;
+    if (a.openspace_service_level != null) f.openSpaceServiceLevel = a.openspace_service_level;
+    if (a.user_comments != null) f.userComments = a.user_comments;
+    return f;
+  }
+  function mergeFoundationIntoChain(prior, siteFallback, foundation) {
+    var now = new Date().toISOString(), out = null;
+    try { if (prior && prior.schema === "heals-chain/1") out = JSON.parse(JSON.stringify(prior)); } catch (e) { out = null; }
+    if (!out) {
+      var slug = ((siteFallback && siteFallback.locationName) || "project");
+      out = { schema: "heals-chain/1", project: { id: "heals_" + String(slug).replace(/\s+/g, "-") + "_" + now.slice(0, 10).replace(/-/g, ""), name: slug, createdAt: now } };
+    }
+    out.project = out.project || {}; out.project.updatedAt = now;
+    if (siteFallback && Array.isArray(siteFallback.boundary) && siteFallback.boundary.length >= 3) out.boundary = siteFallback.boundary;
+    if (!Array.isArray(out.boundary) || out.boundary.length < 3) return { err: "noboundary" };
+    out.site = out.site || {};
+    if (siteFallback) {
+      if (siteFallback.locationName) out.site.locationName = siteFallback.locationName;
+      if (Array.isArray(siteFallback.center)) out.site.center = siteFallback.center;
+      if (siteFallback.area != null) out.site.area = siteFallback.area;
+    }
+    out.stations = out.stations || {};
+    out.stations.foundation = foundation;
+    out.from = "foundation";
+    out.trace = (Array.isArray(out.trace) ? out.trace : []).filter(function (e) { return !(e && e.station === "foundation"); });
+    out.trace.push({ station: "foundation", at: now });
+    return { chain: out };
+  }
+  function exportHealsChainMap() {
+    if (!lastAnalysis) {
+      alert(hxLang("尚無分析結果可匯出。請先放標記或畫基地範圍，按「分析周邊綠地」後再匯出。", "No analysis yet. Draw the site and run Analyze first."));
+      return;
+    }
+    var geo = buildSitePayload();
+    if (!geo) {
+      alert(hxLang("heals-chain 需要基地範圍：請先用「繪製基地範圍」畫出多邊形（讀地是整條鏈的起點，範圍會傳給後續各站）再匯出。", "heals-chain needs a site boundary — draw the polygon first; it defines the boundary for the whole chain."));
+      return;
+    }
+    var r = mergeFoundationIntoChain(null, geo, hxFoundationBlock());
+    if (r.err) { alert(hxLang("尚無基地範圍。", "No site boundary.")); return; }
+    var name = "heals-chain_" + String(geo.locationName || "project").replace(/[\\/:*?"<>|\s]+/g, "-") + "_01-foundation.json";
+    var json = JSON.stringify(r.chain, null, 2);
+    try {
+      var blob = new Blob([json], { type: "application/json" });
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob); a.download = name;
+      document.body.appendChild(a); a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); if (a.parentNode) a.parentNode.removeChild(a); }, 0);
+    } catch (e) {}
+    try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(json); } catch (e) {}
+    hxToast(hxLang("已匯出 heals-chain 專案檔（01-foundation）：交給讀人／生態，最終進綜整。", "heals-chain file exported (01-foundation) — pass to Read-the-People / Ecology, finally Synthesis."));
+  }
   var exportJsonBtn = document.getElementById("export-json-btn");
   if (exportJsonBtn) exportJsonBtn.addEventListener("click", exportSiteAnalysisJSON);
+  var hxChainBtn = document.createElement("button");
+  hxChainBtn.className = "tool-btn"; hxChainBtn.type = "button"; hxChainBtn.id = "export-chain-btn";
+  hxChainBtn.title = hxLang("匯出 heals-chain 專案檔（01-foundation），供下游各站與綜整", "Export the heals-chain project file (01-foundation)");
+  if (exportJsonBtn && exportJsonBtn.parentNode) exportJsonBtn.parentNode.insertBefore(hxChainBtn, exportJsonBtn.nextSibling);
+  hxChainBtn.addEventListener("click", exportHealsChainMap);
+  function hxSyncChainLabel() { hxChainBtn.textContent = hxLang("⛓ 匯出 heals-chain（01-foundation）", "⛓ Export heals-chain (01-foundation)"); }
+  hxSyncChainLabel();
+  window.addEventListener("langchange", hxSyncChainLabel);
   function hxSyncExportLabel() {
     if (exportJsonBtn) exportJsonBtn.textContent = hxLang("匯出基地分析 JSON(打卡 / 串接用)", "Export site-analysis JSON (check-in / chaining)");
   }
