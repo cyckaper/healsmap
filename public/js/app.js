@@ -760,6 +760,7 @@
         return { key: f.key, normalized: +f.v.toFixed(2), weight: f.w };
       })
     };
+    scheduleAutoSave(); // 分析各階段(熱環境/氣候/OSSL)到位皆經此,自動保存
   }
 
   function clamp01(x) { return Math.max(0, Math.min(1, x)); }
@@ -935,6 +936,7 @@
           main_pollutant: best.pollutant,
           publish_time: best.publishtime
         };
+        scheduleAutoSave(); // 空品到位,更新自動保存
       }
     };
 
@@ -1631,7 +1633,7 @@
         top_species: topSpecies.map(function (s) { return s.name + "(" + s.count + "筆)"; }),
         threatened_list: threatened
       };
-      if (lastAnalysis) lastAnalysis.biodiversity = lastBiodiv;
+      if (lastAnalysis) { lastAnalysis.biodiversity = lastBiodiv; scheduleAutoSave(); }
 
       biodivSourceEl.innerHTML = t("b.note");
     }).catch(function (err) {
@@ -2078,8 +2080,310 @@
   map.on(L.Draw.Event.EDITED, updateZoningBtnState);
   map.on(L.Draw.Event.DELETED, updateZoningBtnState);
 
+  // =========================================================
+  //  分析結果保存與比較(localStorage,純前端)
+  // =========================================================
+  var HIST_KEY = "sas_analyses";
+  var HIST_MAX = 30; // 上限筆數,超過丟最舊(localStorage 容量有限)
+  var SECTION_DEFS = [
+    { key: "pop", zhKey: "pop.h", region: "info-region", body: "indicators" },
+    { key: "green", zhKey: "green.h", region: "green-region", body: "green-indicators" },
+    { key: "ossl", zhKey: "ossl.h", region: "ossl-region", body: "ossl-output" },
+    { key: "climate", zhKey: "climate.h", region: "climate-region", body: "climate-indicators" },
+    { key: "heat", zhKey: "heat.h", region: "heat-region", body: "heat-indicators" },
+    { key: "aqi", zhKey: "aqi.h", region: "aqi-region", body: "aqi-indicators" },
+    { key: "hgip", zhKey: "hgip.h", region: "hgip-region", body: "hgip-indicators" },
+    { key: "biodiv", zhKey: "biodiv.h", region: "biodiv-region", body: "biodiv-indicators" }
+  ];
+  var histListEl = document.getElementById("hist-list");
+  var histStatusEl = document.getElementById("hist-status");
+  var histCompareBtn = document.getElementById("hist-compare");
+  var histExportBtn = document.getElementById("hist-export");
+  var histImportBtn = document.getElementById("hist-import");
+  var histFileEl = document.getElementById("hist-file");
+  var histWarnedWriteFail = false;
+
+  // localStorage 讀寫需 try-catch(Safari 私密瀏覽會丟例外)
+  function histRead() {
+    try {
+      var arr = JSON.parse(localStorage.getItem(HIST_KEY) || "[]");
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) { return []; }
+  }
+  function histWrite(arr) {
+    try {
+      localStorage.setItem(HIST_KEY, JSON.stringify(arr));
+      return true;
+    } catch (e) {
+      histStatus(t("hist.saveFail"));
+      if (!histWarnedWriteFail) { histWarnedWriteFail = true; alert(t("hist.saveFail")); }
+      return false;
+    }
+  }
+  function histStatus(msg) { if (histStatusEl) histStatusEl.textContent = msg || ""; }
+  function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
+
+  // ---- 自動保存:同一次分析(lastAnalysis 物件不變)反覆更新同一筆 ----
+  var histRunRef = null, histRunId = null, histSaveTimer = null;
+  function scheduleAutoSave() {
+    clearTimeout(histSaveTimer);
+    histSaveTimer = setTimeout(autoSaveAnalysis, 2500); // 各面板非同步到位,防抖合併寫入
+  }
+  function captureSections() {
+    return SECTION_DEFS.map(function (d) {
+      var r = document.getElementById(d.region), b = document.getElementById(d.body);
+      var txt = ((r ? r.innerText : "") + "\n" + (b ? b.innerText : ""))
+        .replace(/\n{3,}/g, "\n\n").trim();
+      return { key: d.key, zh: t(d.zhKey), text: txt };
+    });
+  }
+  function autoSaveAnalysis() {
+    if (!lastAnalysis) return;
+    if (histRunRef !== lastAnalysis) {
+      histRunRef = lastAnalysis;
+      histRunId = "a" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    }
+    var f = lastAnalysis.focus || {};
+    var sp = buildSitePayload();
+    var rec = {
+      id: histRunId,
+      savedAt: new Date().toISOString(),
+      placeName: lastRegionTitle || "",
+      lat: f.lat != null ? f.lat : (lastFocus ? +lastFocus.lat.toFixed(5) : null),
+      lng: f.lng != null ? f.lng : (lastFocus ? +lastFocus.lng.toFixed(5) : null),
+      areaHa: lastSiteAreaHa,
+      boundary: sp ? sp.boundary : null, // 有畫範圍才存,載入時還原多邊形
+      sections: captureSections(),
+      meta: {
+        period: (DATA.meta && DATA.meta.population_period) || null,
+        region: lastRegionTitle || ""
+      },
+      analysis: lastAnalysis // 完整數值,載入後可續產 AI 報告/匯出
+    };
+    var arr = histRead(), idx = -1;
+    for (var i = 0; i < arr.length; i++) if (arr[i].id === rec.id) { idx = i; break; }
+    if (idx >= 0) { rec.name = arr[idx].name; arr[idx] = rec; }
+    else { arr.push(rec); while (arr.length > HIST_MAX) arr.shift(); }
+    if (histWrite(arr)) { renderHistList(); histStatus(t("hist.savedAuto")); }
+  }
+
+  // ---- 清單 ----
+  function histDisplayName(rec) {
+    return rec.name || rec.placeName || t("hist.unnamed");
+  }
+  function renderHistList() {
+    if (!histListEl) return;
+    var arr = histRead();
+    if (!arr.length) {
+      histListEl.innerHTML = "<p class='hint'>" + esc(t("hist.empty")) + "</p>";
+      updateCompareBtn();
+      return;
+    }
+    var html = "";
+    for (var i = arr.length - 1; i >= 0; i--) { // 新的在上
+      var r = arr[i];
+      var d = new Date(r.savedAt);
+      var when = isNaN(d) ? "" : d.toLocaleString();
+      html += "<div class='hist-item' data-id='" + esc(r.id) + "'>" +
+        "<input type='checkbox' class='hist-chk' aria-label='compare'>" +
+        "<div class='hist-info'><div class='hist-nm'>" + esc(histDisplayName(r)) + "</div>" +
+        "<div class='hist-sub'>" + esc(when) +
+        (r.areaHa != null ? " · " + r.areaHa + " " + t("r.uHa") : "") + "</div></div>" +
+        "<button type='button' class='hist-mini' data-act='load'>" + esc(t("hist.load")) + "</button>" +
+        "<button type='button' class='hist-mini' data-act='rename'>" + esc(t("hist.rename")) + "</button>" +
+        "<button type='button' class='hist-mini danger' data-act='del'>" + esc(t("hist.del")) + "</button>" +
+        "</div>";
+    }
+    histListEl.innerHTML = html;
+    updateCompareBtn();
+  }
+  function histCheckedIds() {
+    var ids = [];
+    if (!histListEl) return ids;
+    histListEl.querySelectorAll(".hist-chk:checked").forEach(function (c) {
+      ids.push(c.closest(".hist-item").getAttribute("data-id"));
+    });
+    return ids;
+  }
+  function updateCompareBtn() {
+    if (!histCompareBtn) return;
+    var n = histCheckedIds().length;
+    histCompareBtn.disabled = n < 2 || n > 3;
+  }
+
+  if (histListEl) {
+    histListEl.addEventListener("change", function (e) {
+      if (!e.target.classList.contains("hist-chk")) return;
+      if (histCheckedIds().length > 3) { // 上限 3 筆
+        e.target.checked = false;
+        histStatus(t("hist.max3"));
+      }
+      updateCompareBtn();
+    });
+    histListEl.addEventListener("click", function (e) {
+      var btn = e.target.closest("button[data-act]");
+      if (!btn) return;
+      var id = btn.closest(".hist-item").getAttribute("data-id");
+      var arr = histRead(), idx = -1;
+      for (var i = 0; i < arr.length; i++) if (arr[i].id === id) { idx = i; break; }
+      if (idx < 0) return;
+      var act = btn.getAttribute("data-act");
+      if (act === "load") { loadHistRecord(arr[idx]); }
+      else if (act === "rename") {
+        var nm = prompt(t("hist.renamePrompt"), histDisplayName(arr[idx]));
+        if (nm != null && nm.trim()) { arr[idx].name = nm.trim(); if (histWrite(arr)) renderHistList(); }
+      } else if (act === "del") {
+        if (confirm(t("hist.delConfirm"))) { arr.splice(idx, 1); if (histWrite(arr)) renderHistList(); }
+      }
+    });
+  }
+
+  // ---- 載入:還原地圖標記/範圍 + 各面板文字 + lastAnalysis ----
+  function loadHistRecord(rec) {
+    markersGroup.clearLayers();
+    drawnItems.clearLayers();
+    greenMarkers.clearLayers();
+    lastAnalysis = rec.analysis || null;
+    histRunRef = lastAnalysis; histRunId = rec.id; // 後續自動保存仍更新同一筆
+    lastRegionTitle = rec.placeName || "";
+    lastSitePolygon = null;
+    if (rec.boundary && rec.boundary.length >= 3) {
+      var poly = L.polygon(rec.boundary, { color: "#3ba88f", weight: 2 });
+      drawnItems.addLayer(poly);
+      lastSitePolygon = poly.toGeoJSON();
+      lastFocus = poly.getBounds().getCenter();
+      computeArea();
+      map.fitBounds(poly.getBounds(), { maxZoom: 17 });
+    } else if (rec.lat != null && rec.lng != null) {
+      L.marker([rec.lat, rec.lng]).addTo(markersGroup);
+      lastFocus = L.latLng(rec.lat, rec.lng);
+      lastSiteAreaHa = rec.areaHa != null ? rec.areaHa : null;
+      map.setView([rec.lat, rec.lng], 16);
+    }
+    (rec.sections || []).forEach(function (s) {
+      for (var i = 0; i < SECTION_DEFS.length; i++) {
+        if (SECTION_DEFS[i].key !== s.key) continue;
+        var r = document.getElementById(SECTION_DEFS[i].region);
+        var b = document.getElementById(SECTION_DEFS[i].body);
+        if (r) { r.textContent = s.text || ""; r.style.whiteSpace = "pre-line"; }
+        if (b) b.innerHTML = "";
+        break;
+      }
+    });
+    updateZoningBtnState();
+    histStatus(t("hist.loaded"));
+  }
+
+  // ---- 比較:2–3 筆並排(新視窗;<820px 改上下堆疊)----
+  function buildCompareDoc(recs) {
+    var css = "body{font-family:'Noto Sans TC',system-ui,sans-serif;margin:24px;color:#222}" +
+      "h1{font-size:20px}h2{font-size:15px;margin:18px 0 6px;border-bottom:2px solid #3ba88f;padding-bottom:3px}" +
+      "table{border-collapse:collapse;width:100%;margin-bottom:8px}" +
+      "th,td{border:1px solid #ccc;padding:6px 8px;font-size:13px;text-align:left;vertical-align:top}" +
+      "th{background:#eef5f3;white-space:nowrap}" +
+      ".cmp-grid{display:grid;grid-template-columns:repeat(" + recs.length + ",1fr);gap:10px}" +
+      ".cmp-cell{border:1px solid #ddd;border-radius:6px;padding:8px;font-size:12.5px;white-space:pre-line}" +
+      ".cmp-cell .who{font-weight:700;color:#2a7d68;margin-bottom:4px;white-space:normal}" +
+      "@media (max-width:820px){.cmp-grid{grid-template-columns:1fr}}";
+    var html = "<h1>" + esc(t("hist.cmpTitle")) + "</h1>";
+    // 頂端:基本資料對照表
+    html += "<table><tr><th></th>";
+    recs.forEach(function (r) { html += "<th>" + esc(histDisplayName(r)) + "</th>"; });
+    html += "</tr>";
+    var metaRows = [
+      [t("hist.cmpName"), function (r) { return histDisplayName(r); }],
+      [t("r.coord"), function (r) { return r.lat != null ? r.lat + "°N, " + r.lng + "°E" : "—"; }],
+      [t("hist.cmpArea"), function (r) { return r.areaHa != null ? r.areaHa + " " + t("r.uHa") : "—"; }],
+      [t("ind.pop"), function (r) {
+        var p = r.analysis && r.analysis.population;
+        return p && p.pop != null ? Math.round(p.pop).toLocaleString() : "—";
+      }],
+      [t("hist.cmpSaved"), function (r) { var d = new Date(r.savedAt); return isNaN(d) ? "—" : d.toLocaleString(); }]
+    ];
+    metaRows.forEach(function (row) {
+      html += "<tr><th>" + esc(row[0]) + "</th>";
+      recs.forEach(function (r) { html += "<td>" + esc(row[1](r)) + "</td>"; });
+      html += "</tr>";
+    });
+    html += "</table>";
+    // 各面向並排
+    SECTION_DEFS.forEach(function (d) {
+      var texts = recs.map(function (r) {
+        var s = (r.sections || []).filter(function (x) { return x.key === d.key; })[0];
+        return s ? s.text : "";
+      });
+      if (!texts.some(function (x) { return x && x.trim(); })) return; // 全空跳過
+      html += "<h2>" + esc(t(d.zhKey)) + "</h2><div class='cmp-grid'>";
+      recs.forEach(function (r, i) {
+        html += "<div class='cmp-cell'><div class='who'>" + esc(histDisplayName(r)) + "</div>" +
+          esc(texts[i] || "—") + "</div>";
+      });
+      html += "</div>";
+    });
+    return "<!DOCTYPE html><html><head><meta charset='utf-8'>" +
+      "<meta name='viewport' content='width=device-width, initial-scale=1'>" +
+      "<title>" + esc(t("hist.cmpTitle")) + "</title><style>" + css + "</style></head><body>" +
+      html + "</body></html>";
+  }
+  if (histCompareBtn) {
+    histCompareBtn.addEventListener("click", function () {
+      var ids = histCheckedIds();
+      if (ids.length < 2 || ids.length > 3) { histStatus(t("hist.needTwo")); return; }
+      var arr = histRead();
+      var recs = ids.map(function (id) {
+        return arr.filter(function (r) { return r.id === id; })[0];
+      }).filter(Boolean);
+      if (recs.length < 2) { histStatus(t("hist.needTwo")); return; }
+      var w = window.open("", "_blank");
+      if (!w) { histStatus(t("exp.blocked")); return; }
+      w.document.open(); w.document.write(buildCompareDoc(recs)); w.document.close();
+    });
+  }
+
+  // ---- 匯出 / 匯入(JSON 備份、跨裝置還原)----
+  if (histExportBtn) {
+    histExportBtn.addEventListener("click", function () {
+      var data = JSON.stringify(histRead(), null, 1);
+      var blob = new Blob([data], { type: "application/json" });
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      var d = new Date(), pad = function (n) { return (n < 10 ? "0" : "") + n; };
+      a.download = "heals-analyses-" + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + ".json";
+      document.body.appendChild(a); a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+    });
+  }
+  if (histImportBtn && histFileEl) {
+    histImportBtn.addEventListener("click", function () { histFileEl.click(); });
+    histFileEl.addEventListener("change", function () {
+      var f = histFileEl.files && histFileEl.files[0];
+      histFileEl.value = "";
+      if (!f) return;
+      var reader = new FileReader();
+      reader.onload = function () {
+        var incoming;
+        try { incoming = JSON.parse(reader.result); } catch (e) { histStatus(t("hist.importBad")); return; }
+        if (!Array.isArray(incoming)) { histStatus(t("hist.importBad")); return; }
+        var arr = histRead(), have = {}, added = 0;
+        arr.forEach(function (r) { have[r.id] = true; });
+        incoming.forEach(function (r) {
+          if (!r || !r.id || !r.savedAt || !Array.isArray(r.sections)) return; // 略過格式不符者
+          if (have[r.id]) return; // 以既有為準,僅補新
+          arr.push(r); have[r.id] = true; added++;
+        });
+        arr.sort(function (a, b) { return String(a.savedAt).localeCompare(String(b.savedAt)); });
+        while (arr.length > HIST_MAX) arr.shift();
+        if (histWrite(arr)) { renderHistList(); histStatus(t("hist.imported", { n: added })); }
+      };
+      reader.readAsText(f);
+    });
+  }
+
+  renderHistList(); // 初始渲染
+
   // 語言切換時:重繪疊圖圖層名稱、空面板提示與已顯示的人口指標
   window.addEventListener("langchange", function () {
+    renderHistList(); // 歷史清單按鈕文字隨語言更新
     // 疊圖圖層名稱
     document.querySelectorAll(".ov-label[data-ovkey]").forEach(function (el) {
       el.textContent = t(el.getAttribute("data-ovkey"));

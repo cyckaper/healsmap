@@ -401,3 +401,46 @@ html, body {
   margin: 0;
 }
 
+
+/* ---------- 歷史紀錄(保存與比較) ---------- */
+.hist-summary {
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent-hover);
+  list-style-position: inside;
+}
+#hist-panel[open] .hist-summary { margin-bottom: 6px; }
+.hist-list { margin: 6px 0; }
+.hist-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  margin-bottom: 6px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.hist-item .hist-info { flex: 1; min-width: 0; }
+.hist-item .hist-nm {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hist-item .hist-sub { font-size: 11px; color: var(--text-dim); }
+.hist-mini {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 11px;
+  padding: 3px 7px;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.hist-mini:hover { background: #36434f; }
+.hist-mini.danger { color: var(--danger-hover); border-color: var(--danger); }
+.hist-mini.danger:hover { background: var(--danger); color: #fff; }
