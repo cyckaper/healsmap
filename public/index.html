@@ -171,6 +171,24 @@
         <p class="hint" id="zoning-hint" data-i18n="zoning.hint">劃出基地範圍後,可一鍵把範圍送到「景觀規劃分區與動線」工具,免重劃。</p>
       </section>
 
+      <!-- 歷史紀錄(分析結果保存與比較,localStorage 純前端) -->
+      <section class="panel">
+        <details id="hist-panel">
+          <summary class="hist-summary" data-i18n="hist.h">歷史紀錄(保存與比較)</summary>
+          <p class="hint" data-i18n="hist.hint">每次分析完成後自動保存於此瀏覽器(localStorage)。勾選 2–3 筆可並排比較。</p>
+          <div id="hist-list" class="hist-list"></div>
+          <div class="btn-group">
+            <button id="hist-compare" class="tool-btn" type="button" disabled data-i18n="hist.compare">比較選取(2–3 筆)</button>
+          </div>
+          <div class="btn-group">
+            <button id="hist-export" class="tool-btn" type="button" data-i18n="hist.export">匯出全部(JSON)</button>
+            <button id="hist-import" class="tool-btn" type="button" data-i18n="hist.import">匯入(JSON)</button>
+          </div>
+          <input type="file" id="hist-file" accept=".json,application/json" style="display:none" />
+          <p class="hint" id="hist-status" role="status" aria-live="polite"></p>
+        </details>
+      </section>
+
       <!-- 資料來源與版權 -->
       <section class="panel credits">
         <h2 data-i18n="credits.h">資料來源與版權</h2>
