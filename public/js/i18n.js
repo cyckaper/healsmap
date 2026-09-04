@@ -157,6 +157,72 @@
     "hist.cmpArea": { zh: "基地面積", en: "Site area" },
     "hist.cmpSaved": { zh: "保存時間", en: "Saved at" },
 
+    "help.t": { zh: "ⓘ 說明與計算方式", en: "ⓘ About & formulas" },
+    "help.search": {
+      zh: "<b>搜尋</b>:輸入地名或地址,經 OpenStreetMap <b>Nominatim</b> 地理編碼服務轉為經緯度,地圖飛往該處並放上標記(可直接作為分析點)。結果取決於 OSM 資料庫;地名重複時可加縣市名縮小範圍,例如「大安森林公園 台北」。",
+      en: "<b>Search</b>: geocodes the place name via OpenStreetMap <b>Nominatim</b>, flies the map there and drops a marker (usable as the analysis point). Add a city name to disambiguate."
+    },
+    "help.basemap": {
+      zh: "底圖切換(單選),皆為內政部國土測繪中心(NLSC)官方 WMTS 圖磚:<br>· <b>EMAP</b> 臺灣通用電子地圖(一般地圖)<br>· <b>PHOTO_MIX</b> 正射航空影像+路名註記<br>· <b>PHOTO2</b> 純正射影像<br>底圖只影響視覺,不影響任何指標計算。",
+      en: "Basemap (single choice), all official NLSC WMTS tiles: <b>EMAP</b> general e-map; <b>PHOTO_MIX</b> orthophoto with road labels; <b>PHOTO2</b> plain orthophoto. Visual only—no effect on any metric."
+    },
+    "help.overlay": {
+      zh: "官方圖資疊圖(可複選;「透明度」滑桿調整所有疊圖的不透明度 0–1):<br>· <b>國土利用調查</b>:土地使用「現況」(航照判釋官方調查),非法定分區<br>· <b>各級學校範圍</b>:學校用地範圍<br>· <b>段籍圖</b>:地籍段界(NLSC)<br>· <b>公有土地地籍圖</b>:有色塊 = 公有土地(國有/直轄市縣市有/鄉鎮市有等),未標示者多為私有或其他 → 公私有判讀依據(看的是「所有權」而非用途)<br>· <b>土壤液化潛勢 / 活動斷層(2021)/ 斷層地質敏感區</b>:經濟部地礦中心 WMS<br>⚠ 疊圖僅供視覺參考;本站分析數值另以 OSM 即時查詢計算。",
+      en: "Official overlays (multi-select; the opacity slider applies to all): <b>Land-Use Survey</b> = actual current use (not legal zoning); <b>School boundaries</b>; <b>Cadastral map</b>; <b>Public Land Cadastre</b> = highlighted parcels are publicly owned (ownership, not use) → basis for public/private reading; <b>Soil liquefaction / active faults (2021) / fault-sensitive zones</b> from MOEA geological WMS. Overlays are visual references; analysis figures come from live OSM queries."
+    },
+    "help.tools": {
+      zh: "· <b>點選放標記</b>:切換後在地圖點一下放置分析點 →「點模式」,以 500 m 服務圈分析周邊<br>· <b>繪製基地範圍</b>:在地圖上畫多邊形 →「面模式」,以範圍內為分析對象;完成後自動計算面積、查詢所在鄉鎮,並啟用「送到分區與動線工具」<br>· <b>清除全部</b>:移除標記、範圍與各面板結果(<b>不</b>刪除歷史紀錄與已上傳的意見資料)",
+      en: "· <b>Place marker</b>: click the map to set the analysis point → point mode (500 m service circle). · <b>Draw site boundary</b>: draw a polygon → site mode (analyze within the boundary); area and township lookup run automatically. · <b>Clear all</b>: removes markers/boundary and panel results (history records and uploaded comments are kept)."
+    },
+    "help.area": {
+      zh: "基地面積以 Turf.js 對多邊形做<b>球面(測地)面積</b>計算:<br><b>面積(公頃)= 多邊形球面面積(m²)÷ 10,000</b><br>畫多個範圍時加總,並顯示範圍數。",
+      en: "Site area is the <b>geodesic (spherical) area</b> of the polygon via Turf.js:<br><b>Area (ha) = spherical area (m²) ÷ 10,000</b>. Multiple shapes are summed."
+    },
+    "help.pop": {
+      zh: "資料:內政部戶政司「村里單齡人口統計」(每月),於網站建置時匯入;<b>點一個點查村里、畫範圍查其中心所在鄉鎮</b>(鄉鎮值由轄下村里加總)。公式:<br>· <b>人口數</b> = 男性 + 女性人口<br>· <b>戶數</b> = 戶籍戶數合計<br>· <b>人口密度</b> = 人口數 ÷ 面積(km²)<br>· <b>戶量</b> = 人口數 ÷ 戶數(人/戶)<br>· <b>性比例</b> = 男 ÷ 女 × 100(每百女子對應男子數)<br>· <b>老化指數</b> = 老年(65+)÷ 幼年(0–14)× 100(>100 表老年多於幼年)<br>· <b>扶養比</b> = (幼年+老年)÷ 青壯年(15–64)× 100<br>· <b>扶幼比</b> = 幼年 ÷ 青壯年 × 100;<b>扶老比</b> = 老年 ÷ 青壯年 × 100<br>· <b>面積</b> = 行政區界球面面積(km²)",
+      en: "Data: MOI monthly single-age population by village, imported at build time; a point looks up the <b>village</b>, a polygon the <b>township</b> at its centroid (aggregated from villages). Formulas:<br>· <b>Population</b> = male + female · <b>Households</b> = registered households<br>· <b>Density</b> = population ÷ area (km²) · <b>Household size</b> = population ÷ households<br>· <b>Sex ratio</b> = male ÷ female × 100 · <b>Aging index</b> = (65+) ÷ (0–14) × 100<br>· <b>Dependency</b> = (young + old) ÷ (15–64) × 100; child/old dependency use the same denominator<br>· <b>Area</b> = geodesic area of the boundary (km²)"
+    },
+    "help.green": {
+      zh: "<b>「分析周邊綠地」按鈕</b>:向 OpenStreetMap Overpass 即時查詢綠地(公園、花園、草地、樹林等),並依模式統計:<br>① <b>點模式</b>(放標記):以 <b>500 m</b> 半徑服務圈為範圍<br>② <b>面模式</b>(畫範圍):統計與基地相交的部分<br>定義:<b>有效公園</b> = OSM leisure 類綠地且面積 ≥ <b>0.1 公頃</b>(1,000 m²,兒童遊樂場法定最小規模);其餘為「零星綠地」(計入綠覆率、不算公園)。<br>· <b>最近公園距離</b> = 分析點至最近有效公園的直線距離(m)<br>· <b>300/500 m 公園數</b> = 門檻距離內的有效公園數<br>· <b>綠覆率(%)= 範圍內全部綠地面積 ÷ 分析範圍面積 × 100</b><br>(點模式分母 = π×500²;面模式分母 = 基地面積)<br>· <b>300 m 內有公園</b>:對照 <b>3-30-300</b> 綠色城市準則(住家 300 m 內應可及綠地)<br>· <b>都市計畫法 §45</b>:公園、綠地、廣場、兒童遊樂場合計應 ≥ 計畫面積 10%(以綠覆率對照,供參考)<br>⚠ OSM 為社群資料,數值屬<b>下限估計</b>。",
+      en: "<b>Analyze green space</b>: queries OSM Overpass live. ① Point mode: a <b>500 m</b> service circle; ② Site mode: intersection with your boundary. <b>Effective park</b> = OSM leisure green ≥ <b>0.1 ha</b> (1,000 m²); everything else counts toward coverage but not as a park.<br>· Nearest-park distance (m), park counts within 300/500 m<br>· <b>Green coverage (%) = green area within scope ÷ scope area × 100</b> (denominator: π×500² in point mode; site area in site mode)<br>· 300 m access checks the <b>3-30-300</b> guideline; the 10% figure references Urban Planning Act §45.<br>OSM is community data—treat values as a <b>lower bound</b>."
+    },
+    "help.ossl": {
+      zh: "以基地為圓心向 Overpass 查 <b>1,000 m</b> 內五類設施,估<b>步行 10 分鐘(800 m)</b>生活圈的服務水準。<br><b>步行距離 = 直線距離 × 1.3</b>(繞路係數)<br>每類兩個子分數:<br>· 鄰近性 <b>P = 100 × e^(−最近步行距離 ÷ λ)</b>(λ 依類別 250–500 m)<br>· 數量 <b>V = 100 × (1 − e^(−800 m 內數量 ÷ k))</b>(k 依類別 2–4)<br>· 類別分數 <b>S = 0.6P + 0.4V</b><br><b>總分 = Σ(S × 權重)</b>;權重:綠地公園 0.35、運動遊憩 0.20、自行車/步道 0.15、大眾運輸 0.15、公廁 0.15<br>分級:≥80 優 / ≥60 良 / ≥40 普通 / ≥20 不足 / <20 匱乏。⚠ OSM 即時查詢之下限估計。",
+      en: "Queries five facility classes within <b>1,000 m</b> and scores a <b>10-min walk (800 m)</b> catchment. <b>Walk distance = straight-line × 1.3</b> (detour factor). Per class: proximity <b>P = 100·e^(−nearest ÷ λ)</b> (λ 250–500 m), quantity <b>V = 100·(1 − e^(−count ÷ k))</b> (k 2–4), class score <b>S = 0.6P + 0.4V</b>. <b>Overall = Σ(S × weight)</b> with weights 0.35 parks / 0.20 sports / 0.15 cycling-trails / 0.15 transit / 0.15 toilets. Bands: ≥80 excellent, ≥60 good, ≥40 fair, ≥20 poor, <20 deprived. Lower-bound estimate from OSM."
+    },
+    "help.climate": {
+      zh: "資料:Open-Meteo <b>ERA5 再分析</b>,參考期 <b>2020–2024</b>(5 個完整年)逐日資料,屬多年「氣候背景值」而非即時天氣。<br>· <b>年均溫</b> = 全期日均溫平均<br>· <b>最熱月</b> = 各月平均溫最大者<br>· <b>高溫日數/年</b> = 日最高溫 ≥ <b>32°C</b> 的日數 ÷ 年數<br>· <b>年降雨量</b> = 全期日雨量總和 ÷ 年數<br>· <b>盛行風向</b> = 逐日主導風向(<b>來向</b>)化為 8 方位取眾數 → 通風廊道與開窗方位參考<br>· <b>日射量</b> = 日短波輻射總量平均(MJ/m²/日)→ 遮蔭與太陽能評估參考",
+      en: "Open-Meteo <b>ERA5 reanalysis</b>, daily data for <b>2020–2024</b> (climatic background, not live weather).<br>· Annual mean temp = mean of daily means · Hottest month = max monthly mean<br>· Heat days/yr = days with Tmax ≥ <b>32°C</b> ÷ years · Annual rainfall = total ÷ years<br>· Prevailing wind = mode of daily dominant direction (<b>from</b>-direction, 8 sectors)<br>· Solar = mean daily shortwave radiation (MJ/m²/day)"
+    },
+    "help.heat": {
+      zh: "綜合「綠地缺口」與「脆弱人口」的 0–1 研判指數:<br>· <b>綠地缺口</b> = clamp((30 − 綠覆率%) ÷ 30, 0–1)(30% 為目標綠覆)<br>· <b>脆弱人口</b> = min(1, (高齡% + 幼年%) ÷ 40)(合計 40% 視為高)<br>· <b>熱脆弱度 = 0.5 × 綠地缺口 + 0.5 × 脆弱人口</b>(無人口資料時 = 綠地缺口)<br>分級:>0.66 高 / >0.34 中 / 其餘低。<br>其中 高齡占比 = 65+ 人口 ÷ 總人口 × 100;幼年占比 = 0–14 ÷ 總人口 × 100。<br>⚠ 屬研判指標(代理變數),非實測熱環境或健康數據。",
+      en: "A 0–1 screening index combining green deficit and vulnerable population:<br>· <b>Green deficit</b> = clamp((30 − coverage%) ÷ 30, 0–1) (30% target)<br>· <b>Vulnerable share</b> = min(1, (elderly% + child%) ÷ 40) (40% = high)<br>· <b>Heat vulnerability = 0.5 × deficit + 0.5 × vulnerable</b> (deficit only if no demographics)<br>Bands: >0.66 high / >0.34 medium / else low. Elderly% = 65+ ÷ pop × 100; child% = 0–14 ÷ pop × 100. A screening proxy, not measured data."
+    },
+    "help.aqi": {
+      zh: "資料:環境部空氣品質指標 <b>AQI</b> 開放資料(每小時更新),經本站後端代理取得全台測站後,以 <b>Haversine 大圓距離</b>找出<b>距基地最近的測站</b>顯示(標題附測站距離)。<br>AQI 分級:0–50 良好 / 51–100 普通 / 101–150 對敏感族群不健康 / 151–200 不健康 / 201–300 非常不健康 / >300 危害<br>另列 PM2.5、PM10(µg/m³)與主要污染物。⚠ 為「最近測站」之測值,非基地實測;測站與基地有距離。",
+      en: "MOENV hourly <b>AQI</b> open data via this site's backend proxy; the <b>nearest station</b> is chosen by <b>Haversine great-circle distance</b> (distance shown). AQI bands: 0–50 good / 51–100 moderate / 101–150 unhealthy for sensitive groups / 151–200 unhealthy / 201–300 very unhealthy / >300 hazardous. PM2.5, PM10 (µg/m³) and the main pollutant are listed. Station reading, not an on-site measurement."
+    },
+    "help.hgip": {
+      zh: "療癒綠地介入需求指數(0–100):四因子各正規化為 0–1 後加權平均:<br>· <b>綠地匱乏</b>(權重 0.35)= clamp((30 − 綠覆率%) ÷ 30)<br>· <b>脆弱族群</b>(0.30)= clamp((高齡% + 幼年%) ÷ 40)<br>· <b>熱壓力</b>(0.20)= clamp(年高溫日數 ÷ 90)(90 天視為極高)<br>· <b>可及性不足</b>(0.15)= clamp((100 − 開放空間服務總分) ÷ 100)<br><b>指數 = Σ(權重 × 因子) ÷ Σ權重 × 100</b>(缺資料的因子自動排除、權重重新正規化)<br>分級:≥67 高 / ≥34 中 / <34 低;<b>◀</b> 標示主導因子(權重 × 值最大者),對應建議的療癒景觀策略。⚠ 屬多因子研判,非實測健康數據。",
+      en: "Healing Green Intervention Priority (0–100): weighted mean of four normalized factors — <b>green scarcity</b> (0.35) = clamp((30 − coverage%) ÷ 30); <b>vulnerable groups</b> (0.30) = clamp((elderly% + child%) ÷ 40); <b>heat stress</b> (0.20) = clamp(heat days/yr ÷ 90); <b>poor access</b> (0.15) = clamp((100 − OSSL) ÷ 100). <b>Index = Σ(w × v) ÷ Σw × 100</b>; missing factors are dropped and weights renormalized. Bands: ≥67 high / ≥34 medium / <34 low; <b>◀</b> marks the dominant factor (max w × v). A screening index."
+    },
+    "help.biodiv": {
+      zh: "<b>「查詢周邊物種紀錄」按鈕</b>:查 iNaturalist 社群觀測 API,以分析點半徑 <b>1 km</b> 取「可驗證(verifiable)」紀錄。<br>· <b>物種數</b> = 不重複物種數<br>· <b>觀測筆數</b> = 觀測紀錄總數<br>· <b>受脅物種</b> = IUCN 近危(NT)以上等級(NT/VU/EN/CR)之物種數<br>另列代表性物種(觀測數最多)與分類群組成。⚠ 涵蓋度依當地觀測熱度而異,屬參考性指標,非完整生態調查。",
+      en: "<b>Query species records</b>: iNaturalist API, verifiable observations within <b>1 km</b> of the analysis point. Species = distinct taxa; observations = record count; threatened = taxa at IUCN NT or above (NT/VU/EN/CR). Top species and taxa composition are listed. Coverage depends on local observer activity—a reference, not a full survey."
+    },
+    "help.cm": {
+      zh: "<b>上傳資料檔</b>:讀取含經緯度與意見欄的 xlsx/csv(於瀏覽器本機解析,不上傳伺服器),選好欄位對應後:<br>· 只納入落在<b>基地範圍內</b>(面模式)或分析點 <b>500 m 內</b>(點模式)的點位並標於地圖<br>· 統計最常見詞彙(<b>詞頻</b>,去除常見停用詞)<br><b>AI 摘要意見主題</b>:把入選意見送 AI 歸納主題與訴求(此步驟會經後端呼叫 AI)。",
+      en: "<b>Upload file</b>: parses an xlsx/csv with coordinates and a comment column locally in your browser. Only points inside the site boundary (site mode) or within 500 m (point mode) are mapped and counted; top words are ranked by frequency. <b>AI summarize</b> sends the selected comments to the AI backend for thematic summary."
+    },
+    "help.ai": {
+      zh: "· <b>產生 AI 基地分析報告</b>:把各面板的「實際數值」(人口、綠地、服務水準、氣候、熱環境、空品、HGIP、物種、意見)送後端 AI,產生引用真實數據的解讀報告;下方顯示本次 token 用量。<br>· <b>匯出 / 列印報告</b>:另開乾淨頁面,用瀏覽器「列印」即可存 PDF;<b>頁尾含 HEALS-BOUNDARY 座標標記</b>(純文字,供下游工具從 PDF 還原基地範圍)。<br>· <b>送到分區與動線工具</b>:把已劃基地範圍(頂點座標,[緯度,經度])以深連結新分頁帶到「景觀規劃分區與動線」,並同步寫入跨子網域 cookie;範圍逾 80 點會自動簡化。未劃範圍時按鈕停用。",
+      en: "· <b>Generate AI report</b>: sends the panels' actual figures to the AI backend for a grounded interpretive report (token usage shown).<br>· <b>Export / print</b>: opens a clean page—use the browser's Print to save a PDF; the footer carries a plain-text <b>HEALS-BOUNDARY</b> marker so downstream tools can recover the site boundary from the PDF.<br>· <b>Send to Zoning & Circulation</b>: deep-links the drawn boundary ([lat,lng] vertices) to the downstream tool and syncs a cross-subdomain cookie; boundaries over 80 vertices are simplified. Disabled until a boundary is drawn."
+    },
+    "help.hist": {
+      zh: "每次分析完成後<b>自動保存</b>於此瀏覽器 localStorage(單一鍵 sas_analyses;上限 30 筆,超過汰換最舊;同一次分析各面板陸續完成時更新同一筆)。<br>· <b>載入</b>:還原地圖標記/範圍與各面板的文字快照(要最新數據請重新分析)<br>· <b>改名 / 刪除</b>:管理紀錄(刪除需確認)<br>· <b>比較</b>:勾選 2–3 筆開新視窗並排對照(頂端基本資料表+八面向逐項;窄螢幕 <820px 改上下堆疊)<br>· <b>匯出全部 / 匯入(JSON)</b>:備份與跨裝置還原(依 id 去重合併)<br>⚠ 紀錄只存在這台裝置的瀏覽器;私密瀏覽或清除網站資料會遺失,重要結果請匯出備份。",
+      en: "Each completed analysis is <b>auto-saved</b> to this browser's localStorage (key sas_analyses; max 30, oldest dropped; one record per analysis run, updated as panels finish).<br>· <b>Load</b> restores the map marker/boundary and text snapshots of every panel (re-run the analysis for fresh data)<br>· <b>Rename / Delete</b> manage records (delete asks for confirmation)<br>· <b>Compare</b>: check 2–3 records for a side-by-side window (stacks below 820px)<br>· <b>Export / Import (JSON)</b> back up and restore across devices (merged, de-duplicated by id)<br>Records live only in this browser—private browsing or clearing site data erases them; export to keep backups."
+    },
+
     "credits.h": { zh: "資料來源與版權", en: "Data Sources & Credits" },
     "credits.basemap": { zh: "底圖圖磚:內政部國土測繪中心 (NLSC)", en: "Base tiles: NLSC, Taiwan" },
     "credits.boundary": { zh: "行政界線:NLSC / taiwan-atlas(村里、鄉鎮市區)", en: "Boundaries: NLSC / taiwan-atlas (village, township)" },

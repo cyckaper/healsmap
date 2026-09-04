@@ -444,3 +444,27 @@ html, body {
 .hist-mini:hover { background: #36434f; }
 .hist-mini.danger { color: var(--danger-hover); border-color: var(--danger); }
 .hist-mini.danger:hover { background: var(--danger); color: #fff; }
+
+/* ---------- 面板說明框(ⓘ 說明與計算方式) ---------- */
+.help-box {
+  margin: 4px 0 8px;
+  border-left: 3px solid var(--accent);
+  background: var(--panel-2);
+  border-radius: 0 6px 6px 0;
+}
+.help-box > summary {
+  cursor: pointer;
+  font-size: 11.5px;
+  color: var(--accent-hover);
+  padding: 4px 8px;
+  list-style-position: inside;
+  user-select: none;
+}
+.help-box[open] > summary { border-bottom: 1px dashed var(--border); }
+.help-body {
+  padding: 7px 9px 9px;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--text-dim);
+}
+.help-body b { color: var(--text); font-weight: 600; }
