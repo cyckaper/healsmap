@@ -630,7 +630,31 @@
   var aqiIndEl = document.getElementById("aqi-indicators");
   var aqiSourceEl = document.getElementById("aqi-source");
 
-  var OVERPASS = "https://overpass-api.de/api/interpreter";
+  // 走棲共生站的共用代查，而不是直接打公用 Overpass 伺服器。
+  // 公用伺服器經常壅塞（2026-10-27 實測：一台要 25 秒、另兩台完全不回應），
+  // 代查那一層有 overpass.ch 的專屬金鑰額度、共用快取，並在失敗時自動改試公用伺服器。
+  // 代查同時接受 GET ?data= 與 POST，介面與上游等價，所以這裡只需換網址。
+  // 來源限制在 *.healsdesign.org 與 cyckaper.github.io，別站無法借用額度。
+  var OVERPASS = "https://eco4design.healsdesign.org/api/osm";
+  var OVERPASS_FALLBACK = "https://overpass-api.de/api/interpreter";   // 代查本身掛掉時的後路
+
+  // 先走共用代查，失敗（逾時、非 2xx、無法連線）再改試公用伺服器，
+  // 所以最差的情況不會比改動前更糟。回傳已解析的 JSON。
+  function overpassFetch(q, ms) {
+    var qs = "?data=" + encodeURIComponent(q);
+    function attempt(base) {
+      return fetchWithTimeout(base + qs, ms).then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.json();
+      });
+    }
+    return attempt(OVERPASS).catch(function (e) {
+      if (window.console && console.warn) {
+        console.warn("[OSM] 共用代查失敗，改試公用伺服器:", (e && e.message) || e);
+      }
+      return attempt(OVERPASS_FALLBACK);
+    });
+  }
   var GREEN_RADIUS = 500; // 公尺:服務圈半徑
   var MIN_PARK_M2 = 1000; // 有效公園最小面積(0.1 公頃,兒童遊樂場法定最小規模)
   var greenMarkers = L.layerGroup().addTo(map);
@@ -1277,10 +1301,7 @@
       "way" + le + bbox + ";" + "relation" + le + bbox + ";" +
       "way" + lu + bbox + ";" + "relation" + lu + bbox + ";" +
       ");out geom;";
-    var url = OVERPASS + "?data=" + encodeURIComponent(q);
-
-    fetchWithTimeout(url, 25000)
-      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    overpassFetch(q, 25000)
       .then(function (data) {
         var parks = [], incid = [], parkM2 = 0, incidM2 = 0, greenM2 = 0;
         (data.elements || []).forEach(function (el) {
@@ -1385,10 +1406,7 @@
       "way" + le + around + ";" + "relation" + le + around + ";" +
       "way" + lu + around + ";" + "relation" + lu + around + ";" +
       ");out geom;";
-    var url = OVERPASS + "?data=" + encodeURIComponent(q);
-
-    fetchWithTimeout(url, 25000)
-      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    overpassFetch(q, 25000)
       .then(function (data) {
         var focusPt = turf.point([lng, lat]);
         var features = [];
