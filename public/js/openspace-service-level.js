@@ -24,7 +24,10 @@
   const WALK_CATCH = 800;    // 涵蓋範圍（公尺步行，≈10 分鐘）
   const QUERY_RADIUS = 1000; // Overpass 查詢半徑（公尺，直線）
   const PV = { p: 0.6, v: 0.4 };
-  const OVERPASS = "https://overpass-api.de/api/interpreter";
+  // 走棲共生站的共用代查（有 overpass.ch 專屬金鑰額度與共用快取）；
+  // 公用伺服器壅塞時常常查不到，代查失敗才退回它。
+  const OVERPASS = "https://eco4design.healsdesign.org/api/osm";
+  const OVERPASS_FALLBACK = "https://overpass-api.de/api/interpreter";
 
   const CATS = [
     { key:"green",   label:"綠地 / 公園",      lambda:400, k:2, weight:0.35,
@@ -70,19 +73,28 @@
 
   /**
    * 計算服務水準。
-   * opts.overpassUrl  自訂 Overpass endpoint（預設 overpass-api.de）
+   * opts.overpassUrl  自訂 Overpass endpoint（預設走共用代查 /api/osm；
+   *                    指定時不自動改道，由呼叫端自行負責備援）
    * opts.elements     若你已用自己的查詢拿到 elements，可直接傳入，省一次請求
    * opts.weights      {green,sports,active,transit,toilet} 覆寫預設權重
    */
   async function compute(lat, lng, opts = {}) {
     let elements = opts.elements;
     if (!elements) {
-      const res = await fetch(opts.overpassUrl || OVERPASS, {
-        method: "POST",
-        body: "data=" + encodeURIComponent(buildQuery(lat, lng)),
-      });
-      if (!res.ok) throw new Error("Overpass " + res.status);
-      elements = (await res.json()).elements || [];
+      const body = "data=" + encodeURIComponent(buildQuery(lat, lng));
+      const post = async (url) => {
+        const res = await fetch(url, { method: "POST", body });
+        if (!res.ok) throw new Error("Overpass " + res.status);
+        return (await res.json()).elements || [];
+      };
+      try {
+        elements = await post(opts.overpassUrl || OVERPASS);
+      } catch (e) {
+        // 代查掛掉時仍能運作，不會比改動前更糟
+        if (opts.overpassUrl) throw e;   // 呼叫端指定了端點就尊重它，不自行改道
+        console.warn("[OSSL] 共用代查失敗，改試公用伺服器:", e.message || e);
+        elements = await post(OVERPASS_FALLBACK);
+      }
     }
     const site = [lat, lng];
     const categories = CATS.map(c => {
