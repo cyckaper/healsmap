@@ -152,6 +152,24 @@
   var lastAnalysis = null;
   var lastRegionTitle = "";
   var lastBiodiv = null;
+  // 基地 / 焦點版本:放標記、畫範圍、清除、載入歷史時遞增。按鈕觸發的分析(NDVI)
+  // 記下當時版本,只有版本相符才併入 lastAnalysis,避免把舊地點結果混進新基地的報告。
+  var siteRev = 0;
+  var lastAnalysisRev = -1;            // lastAnalysis 建立時的 siteRev
+  var lastNdvi = null, lastNdviRev = -1; // NDVI 結果(可序列化部分)與其 siteRev
+  var lastReviews = null;              // 在地評價 · 評論分析結果(使用者提供之文字,與座標無關)
+
+  function onSiteChanged() {
+    siteRev++;
+    resetNdviPanel(); // NDVI 疊圖屬於舊範圍,換地點即清除
+  }
+  // 新建 lastAnalysis 時呼叫:併入版本相符的 NDVI 與評論分析結果
+  function attachExtras() {
+    if (!lastAnalysis) return;
+    lastAnalysisRev = siteRev;
+    if (lastNdvi && lastNdviRev === siteRev) lastAnalysis.ndvi = lastNdvi;
+    if (lastReviews) lastAnalysis.site_reviews = lastReviews;
+  }
 
   // =========================================================
   //  底圖切換
@@ -244,6 +262,7 @@
     ).openPopup();
     lastFocus = e.latlng;
     lastSitePolygon = null; // 點模式
+    onSiteChanged();
     // 點 → 查村里人口指標
     lookupVillage(e.latlng.lat, e.latlng.lng);
     if (cmState.allPoints.length) refreshCommentScope(); // 已載入意見:重新依新焦點篩選
@@ -287,6 +306,7 @@
       var xy = c.geometry.coordinates; // [lng, lat]
       lastFocus = L.latLng(xy[1], xy[0]);
       lastSitePolygon = e.layer.toGeoJSON(); // 面模式:分析範圍內綠地
+      onSiteChanged();
       updateZoningBtnState(); // 已有範圍:啟用「送到分區與動線工具」
       lookupTown(xy[1], xy[0]);
       if (cmState.allPoints.length) refreshCommentScope(); // 已載入意見:依範圍篩選
@@ -351,6 +371,8 @@
     updateZoningBtnState(); // 範圍已清:停用「送到分區與動線工具」
     resetGreenPanel();
     resetBiodivPanel();
+    onSiteChanged();       // 清 NDVI 結果與疊圖
+    resetReviewResults();  // 清評論分析結果(保留已貼上的文字,可再按「分析評論」)
     cmMarkers.clearLayers(); // 清意見圖層標示(保留已上傳資料,可重新選範圍篩選)
     if (cmState.allPoints.length) cmRegionEl.textContent = t("cm.reselect");
     toolHint.textContent = t("t.cleared");
@@ -688,10 +710,36 @@
     aqiSourceEl.textContent = "";
   }
 
-  // 熱環境/健康研判:綠覆率(對 3-30-300 的 30% 目標)× 脆弱族群(高齡+幼年)
-  function renderHeat(greenCoveragePct, props) {
+  // 熱環境與療癒綠地指數的「綠地」輸入(對照 3-30-300 的 30% 樹冠目標):
+  // 本基地有 NDVI 結果時用高植生比例(NDVI ≥ 0.6,樹冠代理);否則用 OSM 綠覆率(下限估計)。
+  // 不用 NDVI ≥ 0.2 的植被覆蓋率:它含草地與稀疏植生,一般街廓多已超過 30%,綠地缺口會失去鑑別力。
+  function heatGreenInput(osmPct) {
+    var nd = lastAnalysis && lastAnalysis.ndvi;
+    if (nd && nd.dense_veg_pct_ndvi_ge_0_6 != null) {
+      return { pct: nd.dense_veg_pct_ndvi_ge_0_6, source: "ndvi", nd: nd };
+    }
+    return { pct: osmPct, source: "osm", nd: null };
+  }
+
+  // 由綠地分析結果取 OSM 綠覆率(點模式為 500 m 服務圈、面模式為基地內;查無綠地時為 0)
+  function osmCoverageOf(a) {
+    var g = (a && a.green) || {};
+    var v = g.mode === "within_site" ? g.site_green_coverage_pct : g.green_coverage_pct;
+    return v != null ? v : 0;
+  }
+
+  // NDVI 晚於綠地分析完成時,以相同人口資料重算熱環境(連帶重算 HGIP 與自動保存)
+  function rerenderHeat() {
+    if (!lastAnalysis || !lastAnalysis.heat) return;
+    renderHeat(osmCoverageOf(lastAnalysis), lastAnalysis.population);
+  }
+
+  // 熱環境/健康研判:綠地(樹冠代理,對 3-30-300 的 30% 目標)× 脆弱族群(高齡+幼年)
+  function renderHeat(osmCoveragePct, props) {
     var elderly = props && props.elderly_share != null ? props.elderly_share : null;
     var child = props && props.child_share != null ? props.child_share : null;
+    var gi = heatGreenInput(osmCoveragePct);
+    var greenCoveragePct = gi.pct;
     var greenDeficit = Math.max(0, Math.min(1, (30 - greenCoveragePct) / 30)); // 0..1
     var vulnShare = elderly != null && child != null ? (elderly + child) / 100 : null;
     var vulnNorm = vulnShare != null ? Math.min(1, vulnShare / 0.4) : null; // 40% 視為高
@@ -702,17 +750,27 @@
 
     heatRegionEl.innerHTML = t("h.title", { c: color, lv: level });
     var html = "";
-    html += ind(t("h.coverage"), greenCoveragePct.toFixed(1), "%");
-    html += ind(t("h.target30"), (greenCoveragePct >= 30 ? t("g.met") : t("g.notMet")), "");
+    if (gi.source === "ndvi") {
+      html += ind(t("h.canopyNdvi"), greenCoveragePct.toFixed(1), "%");
+      html += ind(t("h.target30"), (greenCoveragePct >= 30 ? t("g.met") : t("g.notMet")), "");
+      html += ind(t("h.vegNdvi"), gi.nd.veg_cover_pct_ndvi_ge_0_2 != null ? gi.nd.veg_cover_pct_ndvi_ge_0_2.toFixed(1) : "—", "%");
+      html += ind(t("h.coverage"), osmCoveragePct.toFixed(1), "%"); // OSM 綠覆率僅列供參考
+    } else {
+      html += ind(t("h.coverage"), greenCoveragePct.toFixed(1), "%");
+      html += ind(t("h.target30"), (greenCoveragePct >= 30 ? t("g.met") : t("g.notMet")), "");
+    }
     html += ind(t("h.elderly"), elderly != null ? elderly.toFixed(1) : "—", "%");
     html += ind(t("h.child"), child != null ? child.toFixed(1) : "—", "%");
     heatIndEl.innerHTML = html;
 
-    heatSourceEl.innerHTML = t("h.note");
+    heatSourceEl.innerHTML = gi.source === "ndvi" ? t("h.noteNdvi", { d: gi.nd.scene_date || "—" }) : t("h.note");
     // 儲存原始 level 鍵供其他語言參考(英文/中文皆存可讀字)
     if (lastAnalysis) {
       lastAnalysis.heat = {
-        green_coverage_pct: +greenCoveragePct.toFixed(1),
+        green_input: gi.source === "ndvi" ? "ndvi_dense_veg_pct" : "osm_green_coverage_pct",
+        green_coverage_pct: +greenCoveragePct.toFixed(1), // 研判實際採用的綠地值(樹冠代理)
+        osm_green_coverage_pct: +osmCoveragePct.toFixed(1),
+        ndvi_veg_cover_pct: gi.source === "ndvi" ? gi.nd.veg_cover_pct_ndvi_ge_0_2 : null,
         meets_30pct_target: greenCoveragePct >= 30,
         elderly_share: elderly,
         child_share: child,
@@ -774,11 +832,13 @@
       html += ind(t(f.labelKey), pct + mark, "%");
     });
     hgipIndEl.innerHTML = html;
-    hgipSourceEl.innerHTML = t("hg.note", { f: t(top.labelKey) });
+    var greenFromNdvi = h.green_input === "ndvi_dense_veg_pct";
+    hgipSourceEl.innerHTML = t("hg.note", { f: t(top.labelKey) }) + (greenFromNdvi ? t("hg.noteNdvi") : "");
 
     lastAnalysis.healing_green_intervention = {
       index: index,
       priority_level: level,
+      green_source: greenFromNdvi ? "ndvi_dense_veg_pct" : "osm_green_coverage_pct",
       dominant_factor: top.key,
       factors: factors.map(function (f) {
         return { key: f.key, normalized: +f.v.toFixed(2), weight: f.w };
@@ -1377,10 +1437,12 @@
             meets_10pct_ref: meets10
           }
         };
+        attachExtras();
         renderHeat(coverage, lastRegionProps);
         loadClimate((bb[1] + bb[3]) / 2, (bb[0] + bb[2]) / 2);
         loadOSSL((bb[1] + bb[3]) / 2, (bb[0] + bb[2]) / 2);
         loadAQI((bb[1] + bb[3]) / 2, (bb[0] + bb[2]) / 2);
+        maybeAutoNdvi();
 
         greenSourceEl.innerHTML = t("g.noteSite");
       })
@@ -1431,10 +1493,12 @@
             population: lastRegionProps,
             green: { radius_m: GREEN_RADIUS, parks_found: 0 }
           };
+          attachExtras();
           renderHeat(0, lastRegionProps);
           loadClimate(lat, lng);
           loadOSSL(lat, lng);
           loadAQI(lat, lng);
+          maybeAutoNdvi();
           return;
         }
 
@@ -1526,10 +1590,12 @@
             has_300m_park_access: has300
           }
         };
+        attachExtras();
         renderHeat(coverage, lastRegionProps);
         loadClimate(lat, lng);
         loadOSSL(lat, lng);
         loadAQI(lat, lng);
+        maybeAutoNdvi();
 
         greenSourceEl.innerHTML = t("g.noteRadius");
       })
@@ -1541,6 +1607,461 @@
   }
 
   greenBtn.addEventListener("click", analyzeGreen);
+
+  // =========================================================
+  //  NDVI 植群分析(Sentinel-2 L2A,ndvi-analysis 模組;瀏覽器直接讀 AWS Open Data)
+  // =========================================================
+  var ndviBtn = document.getElementById("ndvi-btn");
+  var ndviRegionEl = document.getElementById("ndvi-region");
+  var ndviIndEl = document.getElementById("ndvi-indicators");
+  var ndviSourceEl = document.getElementById("ndvi-source");
+  var ndviMapCtl = document.getElementById("ndvi-map-ctl");
+  var ndviLayerChk = document.getElementById("ndvi-layer");
+  var ndviLegendEl = document.getElementById("ndvi-legend");
+  var ndviProbeEl = document.getElementById("ndvi-probe");
+  var ndviLayer = L.layerGroup().addTo(map);
+  var ndviState = { run: 0, result: null, rev: -1, ctrl: null, activeRev: -1 };
+  var NDVI_TIMEOUT_MS = 90000;
+  // 深色側欄上的文字用色(分級色塊本身較深,文字改用較亮的同色系)
+  var NDVI_TEXT_COLOR = { dense: "#6cc070", moderate: "#a8d46f", sparse: "#d9c76a", bare: "#c9a477" };
+  var NDVI_CLASS_KEYS = { water: "water_shadow_lt0", bare: "bare_built_0_to_0_2", sparse: "sparse_0_2_to_0_4", moderate: "moderate_0_4_to_0_6", dense: "dense_ge_0_6" };
+
+  function NV() { return (typeof window !== "undefined" && window.NDVIAnalysis) || null; }
+
+  function resetNdviPanel() {
+    ndviState.run++; // 進行中的分析一律作廢
+    if (ndviState.ctrl) { try { ndviState.ctrl.abort(); } catch (e) { /* 忽略 */ } ndviState.ctrl = null; }
+    ndviState.result = null;
+    lastNdvi = null;
+    ndviLayer.clearLayers();
+    ndviRegionEl.textContent = t("ndvi.hint");
+    ndviIndEl.innerHTML = "";
+    ndviSourceEl.textContent = "";
+    ndviMapCtl.style.display = "none";
+    ndviProbeEl.textContent = t("ndvi.probeHint");
+    ndviBtn.disabled = false;
+  }
+
+  function ndviLevelKey(mean) {
+    return mean >= 0.6 ? "dense" : mean >= 0.4 ? "moderate" : mean >= 0.2 ? "sparse" : "bare";
+  }
+
+  // 寫入 lastAnalysis / 匯出 / AI 用的精簡結果(不含疊圖影像與點查函式)
+  function ndviForAnalysis(res) {
+    var cls = {};
+    res.classes.forEach(function (c) { cls[NDVI_CLASS_KEYS[c.key]] = c.pct; });
+    return {
+      source: "Copernicus Sentinel-2 L2A (ESA) via AWS Open Data / Element 84 Earth Search",
+      scene_date: res.scene.date,
+      scene_id: res.scene.id,
+      platform: "Sentinel-" + String(res.scene.platform || "2").replace(/^sentinel-/i, "").toUpperCase(),
+      tile: res.scene.tile,
+      scene_cloud_pct: res.scene.scene_cloud_pct,
+      mode: res.mode,
+      radius_m: res.radius_m,
+      pixel_size_m: res.pixel_size_m,
+      clear_sky_pct: res.clear_sky_pct,
+      analyzed_area_ha: res.analyzed_area_ha,
+      mean: res.mean,
+      median: res.median,
+      std: res.std,
+      p10: res.p10,
+      p90: res.p90,
+      veg_cover_pct_ndvi_ge_0_2: res.veg_cover_pct,
+      dense_veg_pct_ndvi_ge_0_6: res.dense_veg_pct,
+      meets_30pct_canopy_proxy: res.dense_veg_pct >= 30,
+      class_pct: cls,
+      level: t("ndvi.lv." + ndviLevelKey(res.mean))
+    };
+  }
+
+  function renderNdviLegend() {
+    var ticks = [-0.2, 0, 0.2, 0.4, 0.6, 0.8];
+    ndviLegendEl.innerHTML =
+      "<div class='bar' style='background:" + NV().legendGradient() + "'></div>" +
+      "<div class='ticks'>" + ticks.map(function (v) {
+        return "<span style='left:" + ((v + 0.2) / 1.05 * 100).toFixed(1) + "%'>" + v + "</span>";
+      }).join("") + "</div>" +
+      "<div class='cloud'><i></i>" + t("ndvi.cloudLegend") + "</div>";
+  }
+
+  function renderNdvi(res) {
+    var lvKey = ndviLevelKey(res.mean);
+    var scope = res.mode === "within_site" ? t("ndvi.scopeSite") : t("ndvi.scopeRadius", { r: res.radius_m });
+    ndviRegionEl.innerHTML = t("ndvi.title", {
+      d: res.scene.date, scope: scope, m: res.mean.toFixed(2),
+      lv: t("ndvi.lv." + lvKey), c: NDVI_TEXT_COLOR[lvKey]
+    });
+    var html = "";
+    html += ind(t("ndvi.mean"), res.mean.toFixed(2), "");
+    html += ind(t("ndvi.median"), res.median.toFixed(2), "");
+    html += ind(t("ndvi.veg"), res.veg_cover_pct.toFixed(1), "%");
+    html += ind(t("ndvi.dense"), res.dense_veg_pct.toFixed(1), "%");
+    html += ind(t("ndvi.t30"), res.dense_veg_pct >= 30 ? t("g.met") : t("g.notMet"), "");
+    html += ind(t("ndvi.clear"), res.clear_sky_pct.toFixed(1), "%");
+    html += "<div class='ghdr' style='grid-column:1/-1'>" + t("ndvi.classHdr") + "</div>";
+    html += "<div class='ndvi-stack'>" + res.classes.map(function (c) {
+      return c.pct > 0 ? "<span style='width:" + c.pct + "%;background:" + c.color + "'></span>" : "";
+    }).join("") + "</div>";
+    res.classes.forEach(function (c) {
+      html += ind("<i class='ndvi-sw' style='background:" + c.color + "'></i>" + t("ndvi.c." + c.key), c.pct.toFixed(1), "%");
+    });
+    ndviIndEl.innerHTML = html;
+    ndviSourceEl.innerHTML = t("ndvi.note", {
+      p: "Sentinel-" + String(res.scene.platform || "2").replace(/^sentinel-/i, "").toUpperCase(), // sentinel-2c → Sentinel-2C(同 ndviForAnalysis)
+      d: res.scene.date, tile: res.scene.tile || "—",
+      sc: res.scene.scene_cloud_pct != null ? res.scene.scene_cloud_pct : "—",
+      k: res.candidates_checked, a: res.analyzed_area_ha, y: String(res.scene.date || "").slice(0, 4)
+    });
+    ndviMapCtl.style.display = res.overlay ? "" : "none";
+    renderNdviLegend();
+  }
+
+  function showNdviOverlay(res) {
+    ndviLayer.clearLayers();
+    if (!res || !res.overlay) return;
+    var img = L.imageOverlay(res.overlay.url, res.overlay.bounds, {
+      opacity: 0.85, interactive: false, className: "ndvi-overlay"
+    }).addTo(ndviLayer);
+    if (img.bringToBack) img.bringToBack(); // 疊圖在向量圖形(基地範圍、綠地)之下
+    if (ndviLayerChk.checked && !map.hasLayer(ndviLayer)) ndviLayer.addTo(map);
+  }
+
+  ndviLayerChk.addEventListener("change", function () {
+    if (ndviLayerChk.checked) ndviLayer.addTo(map); else map.removeLayer(ndviLayer);
+  });
+
+  // 地圖點查像元 NDVI(非標記 / 繪製模式時)
+  map.on("click", function (e) {
+    if (markerMode || polygonDrawer) return;
+    var r = ndviState.result;
+    if (!r || typeof r.valueAt !== "function" || !map.hasLayer(ndviLayer)) return;
+    var v = r.valueAt(e.latlng.lat, e.latlng.lng);
+    if (v === undefined) return;
+    ndviProbeEl.innerHTML = v === null ? t("ndvi.probeCloud")
+      : t("ndvi.probe", { v: v.toFixed(2), c: t("ndvi.c." + NV().classOf(v)).replace(/\s*[((][^()()]*[))]\s*$/, "") });
+  });
+
+  function analyzeNdvi() {
+    if (!NV()) { ndviRegionEl.textContent = t("ndvi.unavailable"); return; }
+    var focus = lastFocus || map.getCenter();
+    var opts = { lat: focus.lat, lng: focus.lng };
+    if (lastSitePolygon) opts.polygon = lastSitePolygon; else opts.radiusM = GREEN_RADIUS;
+
+    if (ndviState.ctrl) { try { ndviState.ctrl.abort(); } catch (e) { /* 忽略 */ } }
+    var run = ++ndviState.run, rev = siteRev;
+    var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    ndviState.ctrl = ctrl;
+    ndviState.activeRev = rev;
+    var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, NDVI_TIMEOUT_MS) : null;
+    if (ctrl) opts.signal = ctrl.signal;
+    opts.onProgress = function (stage, info) {
+      if (run !== ndviState.run) return;
+      if (stage === "check") ndviRegionEl.textContent = t("ndvi.st.check", { i: info.i, n: info.n, d: info.date });
+      else if (stage === "read") ndviRegionEl.textContent = t("ndvi.st.read", { d: info.date });
+      else ndviRegionEl.textContent = t("ndvi.st." + stage);
+    };
+
+    ndviBtn.disabled = true;
+    ndviState.result = null;
+    lastNdvi = null;
+    ndviIndEl.innerHTML = "";
+    ndviSourceEl.textContent = "";
+    ndviLayer.clearLayers();
+    ndviMapCtl.style.display = "none";
+    ndviProbeEl.textContent = t("ndvi.probeHint");
+    ndviRegionEl.textContent = t("ndvi.st.search");
+
+    NV().analyze(opts).then(function (res) {
+      if (run !== ndviState.run) return; // 期間已換地點 / 清除
+      ndviState.result = res;
+      ndviState.rev = rev;
+      renderNdvi(res);
+      showNdviOverlay(res);
+      lastNdvi = ndviForAnalysis(res);
+      lastNdviRev = rev;
+      if (lastAnalysis && lastAnalysisRev === rev) {
+        lastAnalysis.ndvi = lastNdvi;
+        // 熱環境 / 療癒綠地指數改以 NDVI 樹冠代理重算(其內 renderHGIP 會自動保存)
+        if (lastAnalysis.heat) rerenderHeat(); else scheduleAutoSave();
+      }
+    }).catch(function (err) {
+      if (run !== ndviState.run) return;
+      var code = err && err.code;
+      var msg = code === "NO_SCENE" ? t("ndvi.err.noScene")
+        : code === "CLOUDY" ? t("ndvi.err.cloudy", {
+            n: err.checked || "—", b: err.bestClear != null ? Math.round(err.bestClear * 100) : 0 })
+        : code === "TOO_SMALL" ? t("ndvi.err.small")
+        : code === "OUTSIDE" ? t("ndvi.err.outside")
+        : (err && err.name === "AbortError") ? t("ndvi.err.timeout")
+        : t("ndvi.err.offline");
+      ndviRegionEl.textContent = msg;
+      // 非預期錯誤附上原始訊息以利診斷
+      ndviSourceEl.textContent = code || (err && err.name === "AbortError") ? "" : String((err && err.message) || err);
+    }).finally(function () {
+      if (timer) clearTimeout(timer);
+      if (run === ndviState.run) { ndviBtn.disabled = false; ndviState.ctrl = null; ndviState.activeRev = -1; }
+    });
+  }
+
+  ndviBtn.addEventListener("click", analyzeNdvi);
+
+  // 「分析周邊綠地」時一併自動執行(同氣候 / 服務水準 / 空品);本基地已有結果或正在計算則略過
+  function maybeAutoNdvi() {
+    if (!NV()) return;
+    if (lastNdvi && lastNdviRev === siteRev) return;
+    if (ndviState.ctrl && ndviState.activeRev === siteRev) return;
+    analyzeNdvi();
+  }
+
+  // =========================================================
+  //  在地評價 · 評論分析(review-analysis 模組;分析使用者自行提供的評論文字)
+  //  不自動擷取 Google 評論:Google Maps Platform 條款禁止在非 Google 地圖上 / 旁
+  //  使用 Places 內容(§3.2.3(e)),亦禁止複製保存使用者評論(§3.2.3(a)(iii))。
+  // =========================================================
+  var rvRegionEl = document.getElementById("rv-region");
+  var rvGmapsBtn = document.getElementById("rv-gmaps");
+  var rvNameEl = document.getElementById("rv-name");
+  var rvTextEl = document.getElementById("rv-text");
+  var rvFileEl = document.getElementById("rv-file");
+  var rvAnalyzeBtn = document.getElementById("rv-analyze");
+  var rvUploadBtn = document.getElementById("rv-upload");
+  var rvClearBtn = document.getElementById("rv-clear");
+  var rvIndEl = document.getElementById("rv-indicators");
+  var rvSummaryEl = document.getElementById("rv-summary");
+  var rvActionsEl = document.getElementById("rv-actions");
+  var rvAiBtn = document.getElementById("rv-ai");
+  var rvAiOutputEl = document.getElementById("rv-ai-output");
+  var rvSourceEl = document.getElementById("rv-source");
+  var rvState = { reviews: [], stats: null, origin: null, aiText: null };
+  var RV_AI_LIMIT = 150;      // AI 分析最多送出則數
+  var RV_AI_MAXLEN = 500;     // 每則最多字數
+  var RV_AI_BUDGET = 30000;   // 送出總字數上限(控制 token 與後端執行時間)
+
+  function RA() { return (typeof window !== "undefined" && window.ReviewAnalysis) || null; }
+
+  function resetReviewResults() {
+    rvState = { reviews: [], stats: null, origin: null, aiText: null };
+    lastReviews = null;
+    if (lastAnalysis) delete lastAnalysis.site_reviews;
+    rvRegionEl.textContent = t("rv.hint");
+    rvIndEl.innerHTML = "";
+    rvSummaryEl.innerHTML = "";
+    rvAiOutputEl.innerHTML = "";
+    rvActionsEl.style.display = "none";
+    rvSourceEl.textContent = "";
+  }
+
+  // Google 地圖 Maps URLs(免金鑰):有填評論對象就以名稱(加縣市區)搜尋,否則開在焦點座標
+  rvGmapsBtn.addEventListener("click", function () {
+    var name = rvNameEl.value.trim(), q;
+    if (name) {
+      var p = lastRegionProps || {};
+      q = name + (p.COUNTYNAME ? " " + p.COUNTYNAME + (p.TOWNNAME || "") : "");
+    } else {
+      var f = lastFocus || map.getCenter();
+      q = f.lat.toFixed(6) + "," + f.lng.toFixed(6);
+    }
+    window.open("https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(q), "_blank", "noopener");
+  });
+
+  function reviewsForAnalysis() {
+    var s = rvState.stats, o = rvState.origin || {};
+    return {
+      source_format: o.format || "plain", // google = 由 Google 地圖評論列表複製貼上;plain = 一般文字;file = 上傳檔案
+      place: rvNameEl.value.trim() || null,
+      review_count: s.count,
+      rated_count: s.rated,
+      avg_rating: s.avgRating,
+      rating_distribution_1_to_5: s.rated ? s.dist : null,
+      aspect_mentions: s.aspects.slice(0, 10).map(function (a) {
+        return { key: a.key, aspect: t("rv.a." + a.key), reviews: a.count, pct: a.pct };
+      }),
+      top_keywords: s.topWords.slice(0, 10).map(function (w) { return w.word + "(" + w.count + ")"; }),
+      sample_reviews: s.samples.slice(0, 5).map(function (x) { return x.length > 200 ? x.slice(0, 200) + "…" : x; }),
+      ai_summary: rvState.aiText || null
+    };
+  }
+
+  function bars(rows, cls) {
+    var max = rows.reduce(function (m, r) { return Math.max(m, r.n); }, 0) || 1;
+    return "<div class='rv-bars'>" + rows.map(function (r) {
+      return "<div class='rv-bar'><span class='rv-bar-t'>" + r.label + "</span>" +
+        "<span class='rv-bar-b" + (cls ? " " + cls : "") + "' style='width:" + Math.round(r.n / max * 100) + "%'></span>" +
+        "<span class='rv-bar-n'>" + r.note + "</span></div>";
+    }).join("") + "</div>";
+  }
+
+  function renderReviewStats() {
+    var s = rvState.stats, o = rvState.origin || {};
+    if (!s) return;
+    var target = esc(rvNameEl.value.trim() || t("rv.targetDefault"));
+    var fmt = o.format === "google" ? t("rv.fmtGoogle", { k: o.dropped ? o.dropped.names : 0, o: o.dropped ? o.dropped.owner : 0 })
+      : o.format === "file" ? t("rv.fmtFile", { f: esc(o.file || "") }) : "";
+    rvRegionEl.innerHTML = t("rv.result", { target: target, n: s.count, fmt: fmt });
+    rvIndEl.innerHTML =
+      ind(t("rv.count"), s.count, t("rv.unit")) +
+      ind(t("rv.avg"), s.avgRating != null ? s.avgRating.toFixed(2) + " ★" : t("rv.avgNone"),
+        s.avgRating != null ? "(" + s.rated + (t("rv.unit") || "") + ")" : "");
+    var html = "<h3 class='cm-sec-title'>" + t("rv.localTitle") + "</h3>";
+    if (s.rated) {
+      html += "<div class='ghdr'>" + t("rv.distHdr") + "</div>";
+      html += bars([5, 4, 3, 2, 1].map(function (k) {
+        var n = s.dist[k - 1];
+        return { label: "★".repeat(k), n: n, note: n + " · " + Math.round(n / s.rated * 100) + "%" };
+      }), "star");
+    }
+    if (s.aspects.length) {
+      html += "<div class='ghdr'>" + t("rv.aspHdr") + "</div>";
+      html += bars(s.aspects.slice(0, 10).map(function (a) {
+        return { label: t("rv.a." + a.key), n: a.count, note: a.count + " · " + Math.round(a.pct) + "%" };
+      }));
+    }
+    if (s.topWords.length) {
+      var max = s.topWords[0].count;
+      html += "<div class='ghdr'>" + t("rv.topWords") + "</div><div class='cm-words'>";
+      s.topWords.forEach(function (w) {
+        html += "<div class='cm-word'><span class='cm-word-t'>" + esc(w.word) + "</span>" +
+          "<span class='cm-word-bar' style='width:" + Math.round(w.count / max * 100) + "%'></span>" +
+          "<span class='cm-word-n'>" + w.count + "</span></div>";
+      });
+      html += "</div>";
+    }
+    if (s.samples.length) {
+      html += "<div class='ghdr'>" + t("rv.samples") + "</div><ul class='cm-samples'>" +
+        s.samples.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>";
+    }
+    rvSummaryEl.innerHTML = html;
+    rvSourceEl.innerHTML = t("rv.note");
+  }
+
+  // 錯誤 / 提示:已有分析結果時顯示在下方提示列(保留原結果與標題),否則顯示在標題列
+  function rvNotice(msg) {
+    if (rvState.stats) rvSourceEl.innerHTML = "<span class='ai-err'>" + esc(msg) + "</span>";
+    else rvRegionEl.textContent = msg;
+  }
+
+  function runReviewAnalysis(reviews, origin) {
+    if (!reviews.length) { rvNotice(t("rv.none")); return; }
+    rvState = { reviews: reviews, stats: RA().analyze(reviews), origin: origin, aiText: null };
+    rvAiOutputEl.innerHTML = ""; // 資料已換,舊的 AI 摘要作廢
+    renderReviewStats();
+    rvActionsEl.style.display = "";
+    lastReviews = reviewsForAnalysis();
+    if (lastAnalysis) { lastAnalysis.site_reviews = lastReviews; scheduleAutoSave(); }
+  }
+
+  rvAnalyzeBtn.addEventListener("click", function () {
+    if (!RA()) return;
+    var txt = rvTextEl.value;
+    if (!txt.trim()) { rvNotice(t("rv.empty")); return; }
+    var p = RA().parseText(txt);
+    runReviewAnalysis(p.reviews, { format: p.format, dropped: p.dropped });
+  });
+
+  rvUploadBtn.addEventListener("click", function () { rvFileEl.click(); });
+  rvFileEl.addEventListener("change", function (e) {
+    var file = e.target.files && e.target.files[0];
+    if (!file || !RA()) return;
+    rvNotice(t("rv.parsing"));
+    var name = (file.name || "").toLowerCase();
+    var job;
+    if (/\.txt$/.test(name) || file.type === "text/plain") {
+      job = file.text().then(function (txt) {
+        var p = RA().parseText(txt);
+        return { reviews: p.reviews, origin: { format: p.format === "google" ? "google" : "file", dropped: p.dropped, file: file.name } };
+      });
+    } else {
+      if (!CL()) { rvNotice(t("rv.parseErr")); rvFileEl.value = ""; return; }
+      job = CL().parseFile(file).then(function (res) {
+        var cols = RA().detectColumns(res.columns);
+        if (!cols.text) { var er = new Error("no text column"); er.code = "NO_TEXT_COL"; throw er; }
+        return { reviews: RA().fromRows(res.rows, cols), origin: { format: "file", file: file.name } };
+      });
+    }
+    job.then(function (r) { runReviewAnalysis(r.reviews, r.origin); })
+      .catch(function (err) {
+        rvNotice(err && err.code === "NO_TEXT_COL" ? t("rv.noTextCol") : t("rv.parseErr"));
+      })
+      .finally(function () { rvFileEl.value = ""; });
+  });
+
+  rvClearBtn.addEventListener("click", function () {
+    rvTextEl.value = "";
+    rvNameEl.value = "";
+    resetReviewResults();
+    if (lastAnalysis) scheduleAutoSave();
+  });
+
+  // 評論對象改名:同步結果標題與 lastAnalysis
+  rvNameEl.addEventListener("input", function () {
+    if (!rvState.stats) return;
+    renderReviewStats();
+    if (lastReviews) lastReviews.place = rvNameEl.value.trim() || null;
+  });
+
+  // AI 主題與情緒分析:把評論送 /api/analyze(reviews_analysis 模式)
+  rvAiBtn.addEventListener("click", function () {
+    if (!rvState.reviews.length) return;
+    if (/github\.io$/i.test(location.hostname)) {
+      rvAiOutputEl.innerHTML = "<p class='ai-err'>" + t("ai.ghPages") + "</p>";
+      return;
+    }
+    var texts = [], used = 0;
+    for (var i = 0; i < rvState.reviews.length && texts.length < RV_AI_LIMIT; i++) {
+      var r = rvState.reviews[i];
+      var txt = r.text.length > RV_AI_MAXLEN ? r.text.slice(0, RV_AI_MAXLEN) + "…" : r.text;
+      if (used + txt.length > RV_AI_BUDGET && texts.length) break;
+      used += txt.length;
+      texts.push((r.rating != null ? "[" + r.rating + "★] " : "") + txt);
+    }
+    var s = rvState.stats;
+    var payload = {
+      mode: "reviews_analysis",
+      lang: (window.i18nLang ? window.i18nLang() : "zh"),
+      reviews: texts,
+      total: rvState.reviews.length,
+      truncated: rvState.reviews.length > texts.length,
+      place: rvNameEl.value.trim() || null,
+      region: lastRegionTitle || null,
+      rating_summary: s.rated ? { rated: s.rated, average: s.avgRating, distribution_1_to_5: s.dist } : null,
+      aspect_mentions: s.aspects.slice(0, 12).map(function (a) { return { aspect: t("rv.a." + a.key), reviews: a.count }; })
+    };
+    var statsRef = rvState.stats;
+    rvAiBtn.disabled = true;
+    rvAiOutputEl.innerHTML = "<p class='ai-loading'>" + t("rv.aiLoading") + "</p>";
+    fetchWithTimeout("./api/analyze", 60000, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload)
+    })
+      .then(function (r) {
+        var ct = r.headers.get("content-type") || "";
+        if (!r.ok || ct.indexOf("application/json") >= 0) {
+          return r.text().then(function (txt) {
+            var msg = txt; try { var j = JSON.parse(txt); if (j && j.error) msg = j.error; } catch (e) { /* 純文字 */ }
+            throw new Error(msg || ("HTTP " + r.status));
+          });
+        }
+        return r.text();
+      })
+      .then(function (txt) {
+        if (rvState.stats !== statsRef) return; // 期間已重新分析 / 清除
+        var sp = splitUsage(txt);
+        rvState.aiText = sp.text || null;
+        rvAiOutputEl.innerHTML =
+          "<h3 class='cm-sec-title'>" + t("rv.aiTitle") + "</h3>" +
+          "<div class='ai-output'>" + renderReport(sp.text || t("ai.empty")) + "</div>" +
+          (sp.usage ? "<p class='hint'>" + renderUsageNote(sp.usage) + "</p>" : "");
+        lastReviews = reviewsForAnalysis();
+        if (lastAnalysis) { lastAnalysis.site_reviews = lastReviews; scheduleAutoSave(); }
+      })
+      .catch(function (err) {
+        if (rvState.stats !== statsRef) return;
+        rvAiOutputEl.innerHTML = "<p class='ai-err'>" + t("ai.fail") + " " + esc(String((err && err.message) || err)) + "</p>";
+      })
+      .finally(function () { rvAiBtn.disabled = false; });
+  });
 
   // =========================================================
   //  生態 / 生物多樣性(iNaturalist,瀏覽器即時查,有 CORS)
@@ -1695,7 +2216,10 @@
   function renderReport(text) {
     if (window.marked && typeof window.marked.parse === "function") {
       try {
-        return window.marked.parse(text);
+        // AI 輸出只需 Markdown:先把 "<" 轉義,避免模型轉述評論 / 意見中的 HTML 被當成標籤執行;
+        // 並停用 javascript:/vbscript:/data: 連結(marked 不會自行過濾)
+        return window.marked.parse(String(text == null ? "" : text).replace(/</g, "&lt;"))
+          .replace(/href\s*=\s*"\s*(?:javascript|vbscript|data):[^"]*"/gi, 'href="#"');
       } catch (e) {
         /* 退回純文字 */
       }
@@ -1797,6 +2321,7 @@
     ".doc{max-width:760px;margin:0 auto;}" +
     "h1{font-size:22px;margin:0 0 6px;}" +
     "h2{font-size:15px;margin:16px 0 6px;border-bottom:1px solid #888;padding-bottom:3px;}" +
+    "h3{font-size:13.5px;margin:10px 0 4px;}" +
     ".meta{color:#444;font-size:13px;margin:0 0 10px;}" +
     "table{width:100%;border-collapse:collapse;margin:6px 0 10px;}" +
     "th,td{border:1px solid #bbb;padding:4px 8px;text-align:left;font-size:13px;vertical-align:top;}" +
@@ -1806,6 +2331,9 @@
     ".bar{max-width:760px;margin:0 auto 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;}" +
     ".bar button{font-size:15px;padding:9px 18px;border:0;border-radius:8px;background:#3ba88f;color:#fff;cursor:pointer;}" +
     ".bar .hint{color:#777;font-size:12px;}" +
+    ".ndvi-img{display:block;width:100%;max-width:340px;image-rendering:pixelated;border:1px solid #bbb;margin:6px 0 2px;}" +
+    ".ndvi-lg{max-width:340px;height:8px;border-radius:3px;margin:2px 0 0;}" +
+    ".ndvi-lgt{max-width:340px;display:flex;justify-content:space-between;font-size:10px;color:#555;margin-bottom:8px;}" +
     "tr{page-break-inside:avoid;}h1,h2{page-break-after:avoid;}" +
     "@media print{.noprint{display:none!important;}body{padding:0;}}";
 
@@ -1859,6 +2387,32 @@
         "</table>";
     }
 
+    var nd = lastAnalysis.ndvi;
+    if (nd) {
+      var clsLabel = { water_shadow_lt0: "water", bare_built_0_to_0_2: "bare", sparse_0_2_to_0_4: "sparse", moderate_0_4_to_0_6: "moderate", dense_ge_0_6: "dense" };
+      var clsText = Object.keys(nd.class_pct || {}).map(function (k) {
+        return t("ndvi.c." + (clsLabel[k] || k)) + " " + nd.class_pct[k] + "%";
+      }).join("、");
+      html += "<h2>" + t("r.hNdvi") + "</h2><table class='summary'>" +
+        prow(t("r.ndviScene"), (nd.scene_date || "—") + " · " + (nd.platform || "—") + (nd.tile ? " · " + nd.tile : "")) +
+        prow(t("r.ndviScope"), (nd.mode === "within_site" ? t("ndvi.scopeSite") : t("ndvi.scopeRadius", { r: nd.radius_m })) +
+          " · " + pnum(nd.analyzed_area_ha, t("r.uHa"))) +
+        prow(t("r.ndviClear"), pnum(nd.clear_sky_pct, " %")) +
+        prow(t("r.ndviMean"), pnum(nd.mean) + " / " + pnum(nd.median) + (nd.level ? "(" + nd.level + ")" : "")) +
+        prow(t("ndvi.veg"), pnum(nd.veg_cover_pct_ndvi_ge_0_2, " %")) +
+        prow(t("ndvi.dense"), pnum(nd.dense_veg_pct_ndvi_ge_0_6, " %") + " · " + t("ndvi.t30") + " " + MET(nd.meets_30pct_canopy_proxy)) +
+        (clsText ? prow(t("r.ndviClasses"), clsText) : "") +
+        "</table>";
+      // 分布圖:僅當目前 NDVI 結果正是這份分析所用者(避免載入歷史後配錯圖)
+      var nr = ndviState.result;
+      if (nr && nr.overlay && nd === lastNdvi && window.NDVIAnalysis) {
+        html += "<p class='src'>" + t("r.ndviMap") + "</p>" +
+          "<img class='ndvi-img' src='" + nr.overlay.url + "' alt='NDVI'>" +
+          "<div class='ndvi-lg' style='background:" + window.NDVIAnalysis.legendGradient() + "'></div>" +
+          "<div class='ndvi-lgt'><span>−0.2</span><span>0</span><span>0.2</span><span>0.4</span><span>0.6</span><span>0.85</span></div>";
+      }
+    }
+
     var cl = lastAnalysis.climate;
     if (cl) {
       html += "<h2>" + t("r.hClimate") + "</h2><table class='summary'>" +
@@ -1873,8 +2427,11 @@
         "</table>";
     }
 
+    var heatNdvi = h.green_input === "ndvi_dense_veg_pct"; // 舊紀錄無此欄 → 視為 OSM
     html += "<h2>" + t("r.hHeat") + "</h2><table class='summary'>" +
-      prow(t("r.covOSM"), pnum(h.green_coverage_pct, " %")) +
+      (heatNdvi
+        ? prow(t("h.canopyNdvi"), pnum(h.green_coverage_pct, " %")) + prow(t("r.covOSM"), pnum(h.osm_green_coverage_pct, " %"))
+        : prow(t("r.covOSM"), pnum(h.green_coverage_pct, " %"))) +
       prow(t("r.t30"), MET(h.meets_30pct_target)) +
       prow(t("r.vuln"), h.vulnerability_level || "—") +
       "</table>";
@@ -1927,6 +2484,25 @@
         (b.taxa ? prow(t("r.taxa"),
           Object.keys(b.taxa).map(function (k) { return k + " " + b.taxa[k]; }).join("、")) : "") +
         "</table>";
+    }
+
+    var sr = lastAnalysis.site_reviews;
+    if (sr) {
+      html += "<h2>" + t("r.hReviews") + "</h2><table class='summary'>" +
+        prow(t("r.rvTarget"), esc(sr.place || "—")) +
+        prow(t("r.rvCount"), pnum(sr.review_count, t("r.uRv"))) +
+        (sr.avg_rating != null ? prow(t("r.rvAvg"), sr.avg_rating + " ★(" + sr.rated_count + ")") : "") +
+        (sr.aspect_mentions && sr.aspect_mentions.length ? prow(t("r.rvAspects"), sr.aspect_mentions.map(function (a) {
+          return t("rv.a." + a.key) + " " + a.reviews;
+        }).join("、")) : "") +
+        (sr.top_keywords && sr.top_keywords.length ? prow(t("r.rvTop"), esc(sr.top_keywords.join("、"))) : "") +
+        "</table>";
+      if (sr.sample_reviews && sr.sample_reviews.length) {
+        html += "<p class='src'>" + t("r.rvSamples") + "</p><ul>" +
+          sr.sample_reviews.map(function (s) { return "<li>" + esc(s) + "</li>"; }).join("") + "</ul>";
+      }
+      if (sr.ai_summary) html += "<div>" + renderReport(sr.ai_summary) + "</div>";
+      html += "<p class='src'>" + t("r.rvNote") + "</p>";
     }
 
     var uc = lastAnalysis.user_comments;
@@ -2166,10 +2742,12 @@
     if (a.healing_green_intervention != null) f.healingGreen = a.healing_green_intervention;
     if (a.biodiversity != null) f.biodiversity = a.biodiversity;
     if (a.green != null) f.green = a.green;
+    if (a.ndvi != null) f.ndvi = a.ndvi;
     if (a.heat != null) f.heat = a.heat;
     if (a.air_quality != null) f.airQuality = a.air_quality;
     if (a.openspace_service_level != null) f.openSpaceServiceLevel = a.openspace_service_level;
     if (a.user_comments != null) f.userComments = a.user_comments;
+    if (a.site_reviews != null) f.siteReviews = a.site_reviews;
     return f;
   }
   function mergeFoundationIntoChain(prior, siteFallback, foundation) {
@@ -2247,13 +2825,20 @@
   var SECTION_DEFS = [
     { key: "pop", zhKey: "pop.h", region: "info-region", body: "indicators" },
     { key: "green", zhKey: "green.h", region: "green-region", body: "green-indicators" },
+    { key: "ndvi", zhKey: "ndvi.h", region: "ndvi-region", body: "ndvi-indicators" },
     { key: "ossl", zhKey: "ossl.h", region: "ossl-region", body: "ossl-output" },
     { key: "climate", zhKey: "climate.h", region: "climate-region", body: "climate-indicators" },
     { key: "heat", zhKey: "heat.h", region: "heat-region", body: "heat-indicators" },
     { key: "aqi", zhKey: "aqi.h", region: "aqi-region", body: "aqi-indicators" },
     { key: "hgip", zhKey: "hgip.h", region: "hgip-region", body: "hgip-indicators" },
-    { key: "biodiv", zhKey: "biodiv.h", region: "biodiv-region", body: "biodiv-indicators" }
+    { key: "biodiv", zhKey: "biodiv.h", region: "biodiv-region", body: "biodiv-indicators" },
+    { key: "rv", zhKey: "rv.h", region: "rv-region", body: ["rv-indicators", "rv-summary", "rv-ai-output"] }
   ];
+  // body 可為單一 id 或 id 陣列
+  function sectionBodies(d) {
+    return (Array.isArray(d.body) ? d.body : [d.body])
+      .map(function (id) { return document.getElementById(id); }).filter(Boolean);
+  }
   var histListEl = document.getElementById("hist-list");
   var histStatusEl = document.getElementById("hist-status");
   var histCompareBtn = document.getElementById("hist-compare");
@@ -2290,8 +2875,8 @@
   }
   function captureSections() {
     return SECTION_DEFS.map(function (d) {
-      var r = document.getElementById(d.region), b = document.getElementById(d.body);
-      var txt = ((r ? r.innerText : "") + "\n" + (b ? b.innerText : ""))
+      var r = document.getElementById(d.region);
+      var txt = ((r ? r.innerText : "") + "\n" + sectionBodies(d).map(function (b) { return b.innerText; }).join("\n"))
         .replace(/\n{3,}/g, "\n\n").trim();
       return { key: d.key, zh: t(d.zhKey), text: txt };
     });
@@ -2402,7 +2987,16 @@
     markersGroup.clearLayers();
     drawnItems.clearLayers();
     greenMarkers.clearLayers();
+    // 新面板(NDVI / 評論分析)先清空,再以紀錄內容還原
+    lastAnalysis = null;
+    siteRev++;
+    resetNdviPanel();
+    resetReviewResults();
     lastAnalysis = rec.analysis || null;
+    lastAnalysisRev = siteRev;
+    lastNdvi = (lastAnalysis && lastAnalysis.ndvi) || null;
+    lastNdviRev = siteRev;
+    lastReviews = (lastAnalysis && lastAnalysis.site_reviews) || null;
     histRunRef = lastAnalysis; histRunId = rec.id; // 後續自動保存仍更新同一筆
     lastRegionTitle = rec.placeName || "";
     lastSitePolygon = null;
@@ -2423,9 +3017,8 @@
       for (var i = 0; i < SECTION_DEFS.length; i++) {
         if (SECTION_DEFS[i].key !== s.key) continue;
         var r = document.getElementById(SECTION_DEFS[i].region);
-        var b = document.getElementById(SECTION_DEFS[i].body);
         if (r) { r.textContent = s.text || ""; r.style.whiteSpace = "pre-line"; }
-        if (b) b.innerHTML = "";
+        sectionBodies(SECTION_DEFS[i]).forEach(function (b) { b.innerHTML = ""; });
         break;
       }
     });
@@ -2550,6 +3143,16 @@
     // 空面板提示(分析結果為動態,提示使用者重新查詢以更新語言)
     if (!lastRegionProps) infoRegionEl.textContent = t("pop.tip");
     else if (lastRegionTitleHtml) renderIndicators(lastRegionProps, lastRegionTitleHtml);
+    // NDVI / 評論分析:applyI18n 會把標題列換回提示文字,有結果時重繪(文字隨語言更新)
+    if (ndviState.result) {
+      renderNdvi(ndviState.result);
+      if (lastNdvi) lastNdvi.level = t("ndvi.lv." + ndviLevelKey(ndviState.result.mean));
+    }
+    if (rvState.stats) {
+      renderReviewStats();
+      lastReviews = reviewsForAnalysis();
+      if (lastAnalysis && lastAnalysis.site_reviews) lastAnalysis.site_reviews = lastReviews;
+    }
   });
 
   // 在地圖右下角標示資料來源(Leaflet attribution 已含 NLSC)

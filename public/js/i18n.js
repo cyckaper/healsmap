@@ -195,16 +195,16 @@
       en: "Open-Meteo <b>ERA5 reanalysis</b>, daily data for <b>2020–2024</b> (climatic background, not live weather).<br>· Annual mean temp = mean of daily means · Hottest month = max monthly mean<br>· Heat days/yr = days with Tmax ≥ <b>32°C</b> ÷ years · Annual rainfall = total ÷ years<br>· Prevailing wind = mode of daily dominant direction (<b>from</b>-direction, 8 sectors)<br>· Solar = mean daily shortwave radiation (MJ/m²/day)"
     },
     "help.heat": {
-      zh: "綜合「綠地缺口」與「脆弱人口」的 0–1 研判指數:<br>· <b>綠地缺口</b> = clamp((30 − 綠覆率%) ÷ 30, 0–1)(30% 為目標綠覆)<br>· <b>脆弱人口</b> = min(1, (高齡% + 幼年%) ÷ 40)(合計 40% 視為高)<br>· <b>熱脆弱度 = 0.5 × 綠地缺口 + 0.5 × 脆弱人口</b>(無人口資料時 = 綠地缺口)<br>分級:>0.66 高 / >0.34 中 / 其餘低。<br>其中 高齡占比 = 65+ 人口 ÷ 總人口 × 100;幼年占比 = 0–14 ÷ 總人口 × 100。<br>⚠ 屬研判指標(代理變數),非實測熱環境或健康數據。",
-      en: "A 0–1 screening index combining green deficit and vulnerable population:<br>· <b>Green deficit</b> = clamp((30 − coverage%) ÷ 30, 0–1) (30% target)<br>· <b>Vulnerable share</b> = min(1, (elderly% + child%) ÷ 40) (40% = high)<br>· <b>Heat vulnerability = 0.5 × deficit + 0.5 × vulnerable</b> (deficit only if no demographics)<br>Bands: >0.66 high / >0.34 medium / else low. Elderly% = 65+ ÷ pop × 100; child% = 0–14 ÷ pop × 100. A screening proxy, not measured data."
+      zh: "綜合「綠地缺口」與「脆弱人口」的 0–1 研判指數:<br>· <b>綠地缺口</b> = clamp((30 − 樹冠代理%) ÷ 30, 0–1)(對照 3-30-300 的 30% 樹冠目標)<br>  <b>樹冠代理</b>:有 NDVI 分析時為 Sentinel-2 <b>NDVI ≥ 0.6 高植生比例</b>(「分析周邊綠地」會自動一併計算);NDVI 無法取得(雲遮、連線)時改用 OSM 綠覆率(下限估計)。不用 NDVI ≥ 0.2 植被覆蓋率,因其含草地,一般街廓多已超過 30%<br>· <b>脆弱人口</b> = min(1, (高齡% + 幼年%) ÷ 40)(合計 40% 視為高)<br>· <b>熱脆弱度 = 0.5 × 綠地缺口 + 0.5 × 脆弱人口</b>(無人口資料時 = 綠地缺口)<br>分級:>0.66 高 / >0.34 中 / 其餘低。<br>其中 高齡占比 = 65+ 人口 ÷ 總人口 × 100;幼年占比 = 0–14 ÷ 總人口 × 100。<br>⚠ 屬研判指標(代理變數),非實測熱環境或健康數據。",
+      en: "A 0–1 screening index combining green deficit and vulnerable population:<br>· <b>Green deficit</b> = clamp((30 − canopy proxy%) ÷ 30, 0–1) (vs the 3-30-300 30% canopy target)<br>  <b>Canopy proxy</b>: the Sentinel-2 <b>NDVI ≥ 0.6 dense-vegetation share</b> when NDVI is available (computed automatically with Analyze green space); otherwise OSM green coverage (lower bound). NDVI ≥ 0.2 cover is not used because it includes grass and exceeds 30% almost everywhere<br>· <b>Vulnerable share</b> = min(1, (elderly% + child%) ÷ 40) (40% = high)<br>· <b>Heat vulnerability = 0.5 × deficit + 0.5 × vulnerable</b> (deficit only if no demographics)<br>Bands: >0.66 high / >0.34 medium / else low. Elderly% = 65+ ÷ pop × 100; child% = 0–14 ÷ pop × 100. A screening proxy, not measured data."
     },
     "help.aqi": {
       zh: "資料:環境部空氣品質指標 <b>AQI</b> 開放資料(每小時更新),經本站後端代理取得全台測站後,以 <b>Haversine 大圓距離</b>找出<b>距基地最近的測站</b>顯示(標題附測站距離)。<br>AQI 分級:0–50 良好 / 51–100 普通 / 101–150 對敏感族群不健康 / 151–200 不健康 / 201–300 非常不健康 / >300 危害<br>另列 PM2.5、PM10(µg/m³)與主要污染物。⚠ 為「最近測站」之測值,非基地實測;測站與基地有距離。",
       en: "MOENV hourly <b>AQI</b> open data via this site's backend proxy; the <b>nearest station</b> is chosen by <b>Haversine great-circle distance</b> (distance shown). AQI bands: 0–50 good / 51–100 moderate / 101–150 unhealthy for sensitive groups / 151–200 unhealthy / 201–300 very unhealthy / >300 hazardous. PM2.5, PM10 (µg/m³) and the main pollutant are listed. Station reading, not an on-site measurement."
     },
     "help.hgip": {
-      zh: "療癒綠地介入需求指數(0–100):四因子各正規化為 0–1 後加權平均:<br>· <b>綠地匱乏</b>(權重 0.35)= clamp((30 − 綠覆率%) ÷ 30)<br>· <b>脆弱族群</b>(0.30)= clamp((高齡% + 幼年%) ÷ 40)<br>· <b>熱壓力</b>(0.20)= clamp(年高溫日數 ÷ 90)(90 天視為極高)<br>· <b>可及性不足</b>(0.15)= clamp((100 − 開放空間服務總分) ÷ 100)<br><b>指數 = Σ(權重 × 因子) ÷ Σ權重 × 100</b>(缺資料的因子自動排除、權重重新正規化)<br>分級:≥67 高 / ≥34 中 / <34 低;<b>◀</b> 標示主導因子(權重 × 值最大者),對應建議的療癒景觀策略。⚠ 屬多因子研判,非實測健康數據。",
-      en: "Healing Green Intervention Priority (0–100): weighted mean of four normalized factors — <b>green scarcity</b> (0.35) = clamp((30 − coverage%) ÷ 30); <b>vulnerable groups</b> (0.30) = clamp((elderly% + child%) ÷ 40); <b>heat stress</b> (0.20) = clamp(heat days/yr ÷ 90); <b>poor access</b> (0.15) = clamp((100 − OSSL) ÷ 100). <b>Index = Σ(w × v) ÷ Σw × 100</b>; missing factors are dropped and weights renormalized. Bands: ≥67 high / ≥34 medium / <34 low; <b>◀</b> marks the dominant factor (max w × v). A screening index."
+      zh: "療癒綠地介入需求指數(0–100):四因子各正規化為 0–1 後加權平均:<br>· <b>綠地匱乏</b>(權重 0.35)= clamp((30 − 樹冠代理%) ÷ 30)(樹冠代理同熱環境:NDVI ≥ 0.6 高植生比例,無 NDVI 時用 OSM 綠覆率)<br>· <b>脆弱族群</b>(0.30)= clamp((高齡% + 幼年%) ÷ 40)<br>· <b>熱壓力</b>(0.20)= clamp(年高溫日數 ÷ 90)(90 天視為極高)<br>· <b>可及性不足</b>(0.15)= clamp((100 − 開放空間服務總分) ÷ 100)<br><b>指數 = Σ(權重 × 因子) ÷ Σ權重 × 100</b>(缺資料的因子自動排除、權重重新正規化)<br>分級:≥67 高 / ≥34 中 / <34 低;<b>◀</b> 標示主導因子(權重 × 值最大者),對應建議的療癒景觀策略。⚠ 屬多因子研判,非實測健康數據。",
+      en: "Healing Green Intervention Priority (0–100): weighted mean of four normalized factors — <b>green scarcity</b> (0.35) = clamp((30 − canopy proxy%) ÷ 30) (canopy proxy as in the heat panel: NDVI ≥ 0.6 dense-vegetation share, or OSM coverage without NDVI); <b>vulnerable groups</b> (0.30) = clamp((elderly% + child%) ÷ 40); <b>heat stress</b> (0.20) = clamp(heat days/yr ÷ 90); <b>poor access</b> (0.15) = clamp((100 − OSSL) ÷ 100). <b>Index = Σ(w × v) ÷ Σw × 100</b>; missing factors are dropped and weights renormalized. Bands: ≥67 high / ≥34 medium / <34 low; <b>◀</b> marks the dominant factor (max w × v). A screening index."
     },
     "help.biodiv": {
       zh: "<b>「查詢周邊物種紀錄」按鈕</b>:查 iNaturalist 社群觀測 API,以分析點半徑 <b>1 km</b> 取「可驗證(verifiable)」紀錄。<br>· <b>物種數</b> = 不重複物種數<br>· <b>觀測筆數</b> = 觀測紀錄總數<br>· <b>受脅物種</b> = IUCN 近危(NT)以上等級(NT/VU/EN/CR)之物種數<br>另列代表性物種(觀測數最多)與分類群組成。⚠ 涵蓋度依當地觀測熱度而異,屬參考性指標,非完整生態調查。",
@@ -215,7 +215,7 @@
       en: "<b>Upload file</b>: parses an xlsx/csv with coordinates and a comment column locally in your browser. Only points inside the site boundary (site mode) or within 500 m (point mode) are mapped and counted; top words are ranked by frequency. <b>AI summarize</b> sends the selected comments to the AI backend for thematic summary."
     },
     "help.ai": {
-      zh: "· <b>產生 AI 基地分析報告</b>:把各面板的「實際數值」(人口、綠地、服務水準、氣候、熱環境、空品、HGIP、物種、意見)送後端 AI,產生引用真實數據的解讀報告;下方顯示本次 token 用量。<br>· <b>匯出 / 列印報告</b>:另開乾淨頁面,用瀏覽器「列印」即可存 PDF;<b>頁尾含 HEALS-BOUNDARY 座標標記</b>(純文字,供下游工具從 PDF 還原基地範圍)。<br>· <b>送到分區與動線工具</b>:把已劃基地範圍(頂點座標,[緯度,經度])以深連結新分頁帶到「景觀規劃分區與動線」,並同步寫入跨子網域 cookie;範圍逾 80 點會自動簡化。未劃範圍時按鈕停用。",
+      zh: "· <b>產生 AI 基地分析報告</b>:把各面板的「實際數值」(人口、綠地、NDVI 植群、服務水準、氣候、熱環境、空品、HGIP、物種、在地評價、意見)送後端 AI,產生引用真實數據的解讀報告;下方顯示本次 token 用量。<br>· <b>匯出 / 列印報告</b>:另開乾淨頁面,用瀏覽器「列印」即可存 PDF;<b>頁尾含 HEALS-BOUNDARY 座標標記</b>(純文字,供下游工具從 PDF 還原基地範圍)。<br>· <b>送到分區與動線工具</b>:把已劃基地範圍(頂點座標,[緯度,經度])以深連結新分頁帶到「景觀規劃分區與動線」,並同步寫入跨子網域 cookie;範圍逾 80 點會自動簡化。未劃範圍時按鈕停用。",
       en: "· <b>Generate AI report</b>: sends the panels' actual figures to the AI backend for a grounded interpretive report (token usage shown).<br>· <b>Export / print</b>: opens a clean page—use the browser's Print to save a PDF; the footer carries a plain-text <b>HEALS-BOUNDARY</b> marker so downstream tools can recover the site boundary from the PDF.<br>· <b>Send to Zoning & Circulation</b>: deep-links the drawn boundary ([lat,lng] vertices) to the downstream tool and syncs a cross-subdomain cookie; boundaries over 80 vertices are simplified. Disabled until a boundary is drawn."
     },
     "help.hist": {
@@ -342,6 +342,13 @@
     "h.title": { zh: "高溫脆弱度研判:<b style='color:{c}'>{lv}</b>", en: "Heat vulnerability: <b style='color:{c}'>{lv}</b>" },
     "h.coverage": { zh: "綠覆率(OSM下限)", en: "Green coverage (OSM min.)" },
     "h.target30": { zh: "對 30% 目標", en: "vs 30% target" },
+    "h.canopyNdvi": { zh: "樹冠代理(NDVI≥0.6)", en: "Canopy proxy (NDVI≥0.6)" },
+    "h.vegNdvi": { zh: "植被覆蓋率(NDVI≥0.2)", en: "Vegetation cover (NDVI≥0.2)" },
+    "h.noteNdvi": {
+      zh: "研判方法:以 Sentinel-2 衛星影像({d})<b>NDVI ≥ 0.6 的高植生比例</b>作為樹冠覆蓋代理,對照 3-30-300 的 30% 樹冠目標,結合高齡與幼年(高溫敏感族群)比例綜合研判;OSM 綠覆率僅列供參考。<br>※ 此為依代理指標之<b>研判</b>,非實測健康 / 氣溫數據;NDVI 為單一日期影像,高植生亦可能包含茂密草地。",
+      en: "Method: the Sentinel-2 ({d}) <b>NDVI ≥ 0.6 dense-vegetation share</b> serves as the canopy proxy against the 3-30-300 30% canopy target, combined with elderly and child shares (heat-sensitive groups); OSM coverage is listed for reference only.<br>Note: a proxy-based <b>assessment</b>, not measured health/temperature data; NDVI is single-date and dense vegetation may include lush grass."
+    },
+    "hg.noteNdvi": { zh: "綠地匱乏以 Sentinel-2 NDVI 高植生比例(樹冠代理)計算。", en: " Green deficit uses the Sentinel-2 NDVI dense-vegetation share (canopy proxy)." },
     "h.elderly": { zh: "高齡比例(65+)", en: "Elderly (65+)" },
     "h.child": { zh: "幼年比例(0-14)", en: "Children (0-14)" },
     "h.lvHigh": { zh: "高", en: "High" },
@@ -383,8 +390,8 @@
     "cl.mon11": { zh: "11 月", en: "Nov" },
     "cl.mon12": { zh: "12 月", en: "Dec" },
     "h.note": {
-      zh: "研判方法:綠覆率(OSM 綠地/服務圈面積,屬下限估計)對照 3-30-300 的 30% 樹冠目標,結合高齡與幼年(高溫敏感族群)比例綜合研判。<br>※ 此為依代理指標與實證關聯之<b>研判</b>,非實測健康/氣溫數據。",
-      en: "Method: green coverage (OSM green / service-area, lower-bound) vs the 3-30-300 30% canopy target, combined with elderly and child shares (heat-sensitive groups).<br>Note: this is a proxy-based <b>assessment</b>, not measured health/temperature data."
+      zh: "研判方法:綠覆率(OSM 綠地/服務圈面積,屬下限估計)對照 3-30-300 的 30% 樹冠目標,結合高齡與幼年(高溫敏感族群)比例綜合研判;NDVI 衛星分析完成後,會改以 NDVI 高植生比例(樹冠代理)重算。<br>※ 此為依代理指標與實證關聯之<b>研判</b>,非實測健康/氣溫數據。",
+      en: "Method: green coverage (OSM green / service-area, lower-bound) vs the 3-30-300 30% canopy target, combined with elderly and child shares (heat-sensitive groups); once the NDVI analysis finishes, it is recomputed with the NDVI dense-vegetation share (canopy proxy).<br>Note: this is a proxy-based <b>assessment</b>, not measured health/temperature data."
     },
 
     // 生物多樣性
@@ -502,8 +509,8 @@
     "r.aiEmpty": { zh: "(尚未產生 AI 報告)", en: "(AI report not generated yet)" },
     "r.printHint": { zh: "在列印對話框選「儲存成 PDF」;檔名已自動帶入地區與時間,可另存新檔避免覆蓋舊報告。", en: "In the print dialog, choose Save as PDF. The filename already includes the region and timestamp, so each export is a distinct file." },
     "r.src": {
-      zh: "底圖:NLSC;界線:NLSC / taiwan-atlas;人口:內政部戶政司 ODRP014(11412);綠地:© OpenStreetMap 貢獻者(ODbL)/ Overpass;地名:OSM Nominatim;生物多樣性:iNaturalist;AI:Anthropic Claude。<br>免責:綠地與綠覆率為即時查詢之下限估計;熱環境/健康為研判而非實測;iNaturalist 觀測涵蓋度依地區而異。本報告僅供規劃參考,不構成正式法定文件。",
-      en: "Base: NLSC; boundaries: NLSC / taiwan-atlas; population: MOI ODRP014 (2025-12); green: © OpenStreetMap contributors (ODbL) / Overpass; place: OSM Nominatim; biodiversity: iNaturalist; AI: Anthropic Claude.<br>Disclaimer: green/coverage are live lower-bound estimates; heat/health are assessments, not measurements; iNaturalist coverage varies by area. For planning reference only; not an official document."
+      zh: "底圖:NLSC;界線:NLSC / taiwan-atlas;人口:內政部戶政司 ODRP014(11412);綠地:© OpenStreetMap 貢獻者(ODbL)/ Overpass;NDVI:含經修改之 Copernicus Sentinel 資料(Sentinel-2 L2A,經 AWS Open Data / Element 84 Earth Search);地名:OSM Nominatim;生物多樣性:iNaturalist;AI:Anthropic Claude。<br>免責:綠地與綠覆率為即時查詢之下限估計;NDVI 為單一日期衛星影像,反映植生量而非樹冠覆蓋;熱環境/健康為研判而非實測;iNaturalist 觀測涵蓋度依地區而異;在地評價為使用者提供之自發性樣本。本報告僅供規劃參考,不構成正式法定文件。",
+      en: "Base: NLSC; boundaries: NLSC / taiwan-atlas; population: MOI ODRP014 (2025-12); green: © OpenStreetMap contributors (ODbL) / Overpass; NDVI: contains modified Copernicus Sentinel data (Sentinel-2 L2A, via AWS Open Data / Element 84 Earth Search); place: OSM Nominatim; biodiversity: iNaturalist; AI: Anthropic Claude.<br>Disclaimer: green/coverage are live lower-bound estimates; NDVI is single-date satellite imagery measuring vegetation amount, not canopy cover; heat/health are assessments, not measurements; iNaturalist coverage varies by area; local reviews are a user-supplied, self-selected sample. For planning reference only; not an official document."
     },
 
     // 工具提示 / 搜尋 / 標記
@@ -533,7 +540,127 @@
       en: "This is a static GitHub Pages preview with no backend; AI analysis is unavailable here."
     },
     "ai.useProd": { zh: "請改用含後端的正式版本:", en: "Use the production version with backend: " },
-    "ai.ghOther": { zh: "(其他分析功能在本頁皆可正常使用)", en: "(All other analysis features work on this page.)" }
+    "ai.ghOther": { zh: "(其他分析功能在本頁皆可正常使用)", en: "(All other analysis features work on this page.)" },
+
+    // NDVI 植群分析(Sentinel-2)
+    "ndvi.h": { zh: "NDVI 植群分析", en: "NDVI Vegetation Analysis" },
+    "ndvi.btn": { zh: "分析 NDVI 植群(衛星影像)", en: "Analyze NDVI (satellite imagery)" },
+    "ndvi.hint": { zh: "先放標記或畫基地,再按「分析 NDVI 植群」(按「分析周邊綠地」時也會自動計算):以 Sentinel-2 衛星影像(10 m)計算植生指標,高植生比例並作為熱環境與療癒綠地指數的樹冠代理。", en: "Place a marker or draw a site, then click Analyze NDVI (it also runs automatically with Analyze Green Space): computed from Sentinel-2 imagery (10 m); the dense-vegetation share also serves as the canopy proxy for the heat and healing-green indices." },
+    "ndvi.layer": { zh: "在地圖顯示 NDVI 分布", en: "Show NDVI layer on the map" },
+    "ndvi.probeHint": { zh: "點地圖上的分布圖可查該像元 NDVI。", en: "Click the NDVI layer on the map to read a pixel value." },
+    "ndvi.probe": { zh: "此處 NDVI <b>{v}</b>({c})", en: "NDVI here: <b>{v}</b> ({c})" },
+    "ndvi.probeCloud": { zh: "此像元被雲或雲影遮蔽,無 NDVI 值。", en: "This pixel is masked by cloud or cloud shadow (no NDVI)." },
+    "ndvi.st.search": { zh: "查詢近一年 Sentinel-2 衛星影像中…(Earth Search)", en: "Searching Sentinel-2 imagery from the past year… (Earth Search)" },
+    "ndvi.st.check": { zh: "檢查基地上空雲量:第 {i}/{n} 景(最新 {d})…", en: "Checking clouds over the site: scene {i}/{n} (latest {d})…" },
+    "ndvi.st.read": { zh: "讀取 {d} 影像的紅光 / 近紅外波段…", en: "Reading red / near-infrared bands from {d}…" },
+    "ndvi.st.compute": { zh: "計算 NDVI…", en: "Computing NDVI…" },
+    "ndvi.title": { zh: "Sentinel-2 影像 <b>{d}</b> · {scope}<br>平均 NDVI <b style='color:{c}'>{m} · {lv}</b>", en: "Sentinel-2 image <b>{d}</b> · {scope}<br>Mean NDVI <b style='color:{c}'>{m} · {lv}</b>" },
+    "ndvi.scopeSite": { zh: "基地範圍內", en: "within the site" },
+    "ndvi.scopeRadius": { zh: "焦點周邊 {r} m", en: "within {r} m of the point" },
+    "ndvi.mean": { zh: "平均 NDVI", en: "Mean NDVI" },
+    "ndvi.median": { zh: "中位數 NDVI", en: "Median NDVI" },
+    "ndvi.veg": { zh: "植被覆蓋率(NDVI≥0.2)", en: "Vegetation cover (NDVI≥0.2)" },
+    "ndvi.dense": { zh: "高植生比例(NDVI≥0.6)", en: "Dense vegetation (NDVI≥0.6)" },
+    "ndvi.t30": { zh: "高植生對 30% 樹冠目標", en: "Dense veg. vs 30% canopy target" },
+    "ndvi.clear": { zh: "晴空像元比例", en: "Clear-sky pixels" },
+    "ndvi.classHdr": { zh: "NDVI 分級面積比例", en: "Area share by NDVI class" },
+    "ndvi.c.water": { zh: "水體/陰影/深色鋪面(<0)", en: "Water/shadow/dark surface (<0)" },
+    "ndvi.c.bare": { zh: "裸露地/建物/鋪面(0–0.2)", en: "Bare/built/paved (0–0.2)" },
+    "ndvi.c.sparse": { zh: "低植生(0.2–0.4)", en: "Sparse veg. (0.2–0.4)" },
+    "ndvi.c.moderate": { zh: "中植生(0.4–0.6)", en: "Moderate veg. (0.4–0.6)" },
+    "ndvi.c.dense": { zh: "高植生(≥0.6)", en: "Dense veg. (≥0.6)" },
+    "ndvi.lv.dense": { zh: "高植生", en: "dense vegetation" },
+    "ndvi.lv.moderate": { zh: "中植生", en: "moderate vegetation" },
+    "ndvi.lv.sparse": { zh: "低植生", en: "sparse vegetation" },
+    "ndvi.lv.bare": { zh: "非植生為主", en: "mostly non-vegetated" },
+    "ndvi.cloudLegend": { zh: "灰:雲 / 雲影遮蔽(無值)", en: "Grey: cloud / shadow (no data)" },
+    "ndvi.note": {
+      zh: "影像:{p} · {d} · 圖塊 {tile} · 場景雲量 {sc}% · 已檢查 {k} 景;分析 {a} 公頃(10 m 像元,雲與雲影依 SCL 遮除)。<br>NDVI =(B08 近紅外 − B04 紅光)÷(B08 + B04)。單一日期影像,受季節與物候影響;NDVI 反映植生量與活力,不等同樹冠覆蓋。含經修改之 Copernicus Sentinel 資料({y}),經 AWS Open Data / Element 84 Earth Search 取得。",
+      en: "Image: {p} · {d} · tile {tile} · scene cloud {sc}% · {k} scene(s) checked; {a} ha analyzed (10 m pixels, clouds/shadows masked via SCL).<br>NDVI = (B08 NIR − B04 red) ÷ (B08 + B04). Single-date image, affected by season and phenology; NDVI reflects vegetation amount/vigor, not canopy cover. Contains modified Copernicus Sentinel data {y}, accessed via AWS Open Data / Element 84 Earth Search."
+    },
+    "ndvi.err.noScene": { zh: "近一年查無場景雲量 < 60% 的 Sentinel-2 影像。", en: "No Sentinel-2 scene under 60% cloud found in the past year." },
+    "ndvi.err.cloudy": { zh: "最近 {n} 景影像在基地上空雲量過多(最佳晴空僅 {b}%),暫無法可靠計算,請稍後再試。", en: "The latest {n} scenes are too cloudy over the site (best clear-sky only {b}%); please try again later." },
+    "ndvi.err.outside": { zh: "基地範圍過大或跨越影像圖塊邊界(單一圖塊約 110 km,相鄰圖塊重疊約 10 km),請縮小範圍後再試。", en: "The site is too large or crosses an image-tile edge (tiles are ~110 km with ~10 km overlap); please use a smaller area." },
+    "ndvi.err.small": { zh: "範圍小於一個 10 m 像元,請畫大一點的基地範圍。", en: "The site is smaller than one 10 m pixel; please draw a larger area." },
+    "ndvi.err.timeout": { zh: "衛星影像讀取逾時,請稍後再試。", en: "Satellite imagery timed out; please try again." },
+    "ndvi.err.offline": { zh: "衛星影像服務暫時無法連線,請稍後再試。", en: "Satellite imagery service unavailable; please try again later." },
+    "ndvi.unavailable": { zh: "NDVI 模組未載入。", en: "NDVI module not loaded." },
+    "help.ndvi": {
+      zh: "<b>「分析 NDVI 植群」按鈕</b>:以 Copernicus <b>Sentinel-2 L2A</b> 衛星影像(10 m 像元,約每 5 天重訪)計算常態化差異植生指標:<br><b>NDVI =(近紅外 B08 − 紅光 B04)÷(B08 + B04)</b>,值域 −1~1,植物越茂盛越高。<br>流程:① 向 Element 84 Earth Search 查近一年、場景雲量 < 60% 的影像;② 依日期由新到舊讀取基地處的 SCL 場景分類,遮除雲、雲影與缺值,選第一景「基地晴空 ≥ 90%」者(都不足時取最佳且 ≥ 50% 者);③ 只讀取基地所在的影像圖塊計算。<br>按「分析周邊綠地」時會自動一併執行;<b>高植生比例</b>會取代 OSM 綠覆率,作為「熱環境 · 健康研判」與「療癒綠地介入需求」的綠地(樹冠代理)輸入。<br>範圍:點模式 = 標記周邊 <b>500 m</b>(同綠地分析);面模式 = 基地範圍內(像元中心落於範圍內者)。<br>· <b>植被覆蓋率</b> = NDVI ≥ 0.2 的像元比例<br>· <b>高植生比例</b> = NDVI ≥ 0.6 的像元比例(喬木樹冠 / 濃密植被的粗略代理,對照 3-30-300 的 30% 樹冠目標)<br>· <b>分級</b>:<0 水體/陰影/深色鋪面、0–0.2 裸露/建成、0.2–0.4 低植生、0.4–0.6 中植生、≥0.6 高植生(慣用概略門檻)<br>· <b>晴空像元比例</b> = 未被雲遮的像元 ÷ 範圍內像元<br>勾選「在地圖顯示 NDVI 分布」可疊上 10 m 像元分布圖,點圖可查單一像元值。<br>⚠ 單一日期影像,受季節、物候、日照與雲影響;10 m 像元會混合多種地物;NDVI 反映植生量與活力,不等同樹冠覆蓋率。每次分析約下載 3–8 MB 影像資料。",
+      en: "<b>Analyze NDVI</b>: computes the Normalized Difference Vegetation Index from Copernicus <b>Sentinel-2 L2A</b> imagery (10 m pixels, ~5-day revisit):<br><b>NDVI = (NIR B08 − red B04) ÷ (B08 + B04)</b>, range −1 to 1; denser, healthier vegetation scores higher.<br>Steps: ① search Element 84 Earth Search for scenes from the past year with scene cloud < 60%; ② newest first, read the SCL scene classification over the site, mask cloud, cloud shadow and no-data, and take the first scene with ≥ 90% clear sky over the site (otherwise the best one ≥ 50%); ③ read only the image tiles covering the site.<br>It also runs automatically with Analyze Green Space, and the <b>dense-vegetation share</b> replaces OSM coverage as the green (canopy-proxy) input of the heat and healing-green indices.<br>Scope: point mode = <b>500 m</b> around the marker (same as the green analysis); site mode = inside the boundary (pixel centres).<br>· <b>Vegetation cover</b> = share of pixels with NDVI ≥ 0.2<br>· <b>Dense vegetation</b> = share with NDVI ≥ 0.6 (a rough proxy for tree canopy, compared with the 3-30-300 30% canopy target)<br>· <b>Classes</b>: <0 water/shadow/dark surfaces, 0–0.2 bare/built, 0.2–0.4 sparse, 0.4–0.6 moderate, ≥0.6 dense (conventional approximate thresholds)<br>· <b>Clear-sky pixels</b> = unmasked pixels ÷ pixels in scope<br>Tick “Show NDVI layer” to overlay the 10 m pixel map; click it to read a pixel value.<br>⚠ Single-date imagery is affected by season, phenology, illumination and cloud; 10 m pixels mix surfaces; NDVI measures vegetation amount/vigor, not canopy cover. Each run downloads roughly 3–8 MB of imagery."
+    },
+    "credits.s2": { zh: "NDVI:含經修改之 Copernicus Sentinel 資料(Sentinel-2 L2A,ESA),經 AWS Open Data 與 Element 84 Earth Search 取得", en: "NDVI: contains modified Copernicus Sentinel data (Sentinel-2 L2A, ESA) via AWS Open Data & Element 84 Earth Search" },
+    "r.hNdvi": { zh: "NDVI 植群分析(Sentinel-2)", en: "NDVI Vegetation Analysis (Sentinel-2)" },
+    "r.ndviScene": { zh: "影像日期 / 衛星 / 圖塊", en: "Image date / satellite / tile" },
+    "r.ndviScope": { zh: "分析範圍", en: "Analysis scope" },
+    "r.ndviClear": { zh: "晴空像元比例", en: "Clear-sky pixels" },
+    "r.ndviMean": { zh: "平均 / 中位數 NDVI", en: "Mean / median NDVI" },
+    "r.ndviClasses": { zh: "分級面積比例", en: "Area share by class" },
+    "r.ndviMap": { zh: "NDVI 分布圖(10 m 像元;灰色為雲遮)", en: "NDVI map (10 m pixels; grey = cloud-masked)" },
+
+    // 在地評價 · 評論分析
+    "rv.h": { zh: "在地評價 · 評論分析", en: "Local Reviews · Review Analysis" },
+    "rv.hint": { zh: "分析基地的 Google 地圖評論(或 PTT、Dcard、問卷)文字:統計評分、關鍵詞與景觀健康面向,並可交給 AI 歸納主題與情緒。", en: "Analyze review text for the site (Google Maps reviews, forums, surveys): ratings, keywords and landscape-health aspects, plus an optional AI theme & sentiment summary." },
+    "rv.gmaps": { zh: "↗ 在 Google 地圖開啟基地位置(查看評論)", en: "↗ Open the site in Google Maps (read reviews)" },
+    "rv.namePh": { zh: "評論對象(例:大安森林公園)", en: "Reviewed place (e.g. Daan Forest Park)" },
+    "rv.textPh": { zh: "貼上評論文字(可直接從 Google 地圖評論列表複製貼上;每則以空行分隔)", en: "Paste review text (you can copy a Google Maps review list as-is; separate other reviews with blank lines)" },
+    "rv.analyze": { zh: "分析評論", en: "Analyze" },
+    "rv.upload": { zh: "上傳檔案", en: "Upload file" },
+    "rv.clear": { zh: "清除", en: "Clear" },
+    "rv.aiBtn": { zh: "AI 分析評論主題與情緒", en: "AI: themes & sentiment" },
+    "rv.aiLoading": { zh: "AI 分析評論中…", en: "AI analyzing reviews…" },
+    "rv.aiTitle": { zh: "② AI 主題與情緒分析(送 Claude 分析)", en: "② AI Themes & Sentiment (analyzed by Claude)" },
+    "rv.localTitle": { zh: "① 本地統計(瀏覽器內計算)", en: "① Local stats (computed in your browser)" },
+    "rv.empty": { zh: "請先貼上評論文字或上傳檔案。", en: "Paste review text or upload a file first." },
+    "rv.none": { zh: "沒有辨識出評論內容;請確認每則評論以空行分隔。", en: "No reviews recognized; please separate reviews with blank lines." },
+    "rv.parsing": { zh: "解析檔案中…", en: "Parsing file…" },
+    "rv.parseErr": { zh: "檔案解析失敗,請確認為 .csv / .xlsx / .txt。", en: "Could not parse the file; please use .csv / .xlsx / .txt." },
+    "rv.noTextCol": { zh: "檔案中找不到評論文字欄(例:評論、內容、review、text)。", en: "No review-text column found (e.g. review, text, comment, 評論)." },
+    "rv.result": { zh: "{target}:共 <b>{n}</b> 則評論{fmt}", en: "{target}: <b>{n}</b> reviews{fmt}" },
+    "rv.fmtGoogle": { zh: "<br><span class='u'>已辨識 Google 地圖格式:略去作者名稱 {k} 筆、業主回應 {o} 則</span>", en: "<br><span class='u'>Google Maps format detected: {k} author names and {o} owner replies removed</span>" },
+    "rv.fmtFile": { zh: "<br><span class='u'>檔案:{f}</span>", en: "<br><span class='u'>File: {f}</span>" },
+    "rv.targetDefault": { zh: "評論", en: "Reviews" },
+    "rv.count": { zh: "評論則數", en: "Reviews" },
+    "rv.avg": { zh: "平均評分", en: "Average rating" },
+    "rv.avgNone": { zh: "—(未含星等)", en: "— (no ratings)" },
+    "rv.unit": { zh: "則", en: "" },
+    "rv.distHdr": { zh: "星等分布", en: "Rating distribution" },
+    "rv.aspHdr": { zh: "景觀 · 健康面向(提及則數)", en: "Landscape & health aspects (reviews mentioning)" },
+    "rv.topWords": { zh: "最常見關鍵詞", en: "Most common keywords" },
+    "rv.samples": { zh: "代表性評論", en: "Representative reviews" },
+    "rv.note": { zh: "面向依關鍵詞比對(每則每面向計一次),只表示「被提及」,不分正負評;評論文字只在你的瀏覽器處理,按「AI 分析」才會送往後端。", en: "Aspects are keyword matches (once per review per aspect) and only mean “mentioned”, not positive or negative. Text stays in your browser unless you click the AI button." },
+    "rv.a.greenery": { zh: "綠意·植栽", en: "Greenery" },
+    "rv.a.shade": { zh: "遮蔭·涼爽", en: "Shade / cool" },
+    "rv.a.heat": { zh: "炎熱·曝曬", en: "Heat / sun exposure" },
+    "rv.a.restorative": { zh: "放鬆·療癒", en: "Relaxation / restoration" },
+    "rv.a.walking": { zh: "步道·運動", en: "Walking / exercise" },
+    "rv.a.children": { zh: "兒童·親子", en: "Children / families" },
+    "rv.a.seating": { zh: "座椅·休憩", en: "Seating / rest" },
+    "rv.a.toilet": { zh: "廁所", en: "Toilets" },
+    "rv.a.clean": { zh: "環境整潔", en: "Cleanliness" },
+    "rv.a.maintenance": { zh: "維護管理", en: "Maintenance" },
+    "rv.a.safety": { zh: "安全·照明", en: "Safety / lighting" },
+    "rv.a.access": { zh: "無障礙·高低差", en: "Accessibility" },
+    "rv.a.transit": { zh: "交通·停車", en: "Transit / parking" },
+    "rv.a.noise": { zh: "聲環境(吵/靜)", en: "Noise / quiet" },
+    "rv.a.crowd": { zh: "人潮擁擠", en: "Crowding" },
+    "rv.a.insects": { zh: "蚊蟲", en: "Mosquitoes / insects" },
+    "rv.a.scenery": { zh: "景觀·美感", en: "Scenery" },
+    "rv.a.wildlife": { zh: "生態·動物", en: "Wildlife" },
+    "rv.a.pets": { zh: "寵物", en: "Pets" },
+    "help.rv": {
+      zh: "分析<b>使用者自行提供</b>的評論文字(Google 地圖評論、PTT、Dcard、問卷或訪談皆可):<br>· <b>在 Google 地圖開啟</b>:以標記 / 基地中心開啟 Google 地圖(有填「評論對象」時改以名稱搜尋),方便閱讀並摘錄評論<br>· <b>貼上</b>:可把 Google 地圖評論列表整段複製貼上,系統自動辨識並略去作者名稱、「在地嚮導 · N 則評論」、相對時間、按鈕字樣與業主回應;其他文字以空行分隔每則(整段沒有空行時每行一則)。行首若有「★★★★☆」「4/5」「4 顆星」會記為星等<br>· <b>上傳</b>:CSV / Excel(需含評論文字欄,可含評分欄)或 TXT<br><b>本地統計</b>:則數、平均評分與星等分布(有星等時)、<b>景觀 · 健康面向</b>被提及的則數(綠意、遮蔭、炎熱、放鬆療癒、步道運動、兒童親子、座椅、廁所、整潔、維護、安全照明、無障礙、交通停車、聲環境、人潮、蚊蟲、景觀美感、生態、寵物;關鍵詞比對,不分正負)與關鍵詞詞頻。<br><b>AI 分析</b>:把評論(最多 150 則)送 Claude 歸納整體評價、正面主題、痛點與對景觀規劃設計的意涵。<br>⚠ 評論為自發性、非隨機樣本,不代表全體使用者。為遵守 Google Maps Platform 條款(不得與非 Google 地圖並用 Places 內容、不得複製保存使用者評論),本工具<b>不自動擷取</b> Google 評論;請自行摘錄研究所需內容、遵守各平台規範,並勿貼上個人資料。",
+      en: "Analyzes review text <b>that you supply</b> (Google Maps reviews, forums, surveys or interviews):<br>· <b>Open in Google Maps</b>: opens Google Maps at the marker / site centre (or searches the “reviewed place” name) so you can read and excerpt reviews<br>· <b>Paste</b>: a Google Maps review list can be pasted as-is—author names, “Local Guide · N reviews”, relative dates, button labels and owner replies are removed automatically; other text is split on blank lines (or one review per line). A leading “★★★★☆”, “4/5” or “4 stars” is read as the rating<br>· <b>Upload</b>: CSV / Excel (with a review-text column, optional rating column) or TXT<br><b>Local stats</b>: count, average rating and distribution (when ratings exist), how many reviews mention each <b>landscape & health aspect</b> (keyword matching, not sentiment) and keyword frequency.<br><b>AI analysis</b>: sends up to 150 reviews to Claude for overall sentiment, positive themes, pain points and design implications.<br>⚠ Reviews are a self-selected sample, not representative of all users. To comply with the Google Maps Platform Terms (no Places content with a non-Google map; no copying/saving user reviews), this tool <b>does not fetch</b> Google reviews automatically—excerpt what your study needs, follow each platform’s rules and do not paste personal data."
+    },
+    "r.hReviews": { zh: "在地評價 · 評論分析", en: "Local Reviews · Review Analysis" },
+    "r.rvTarget": { zh: "評論對象", en: "Reviewed place" },
+    "r.rvCount": { zh: "評論則數", en: "Reviews" },
+    "r.rvAvg": { zh: "平均評分(含星等則數)", en: "Average rating (rated reviews)" },
+    "r.rvAspects": { zh: "主要提及面向(則數)", en: "Most mentioned aspects (reviews)" },
+    "r.rvTop": { zh: "最常見關鍵詞", en: "Top keywords" },
+    "r.rvSamples": { zh: "代表性評論:", en: "Representative reviews:" },
+    "r.uRv": { zh: " 則", en: "" },
+    "r.rvNote": { zh: "評論為使用者自行提供之自發性樣本,不代表全體使用者。", en: "Reviews were supplied by the user and are a self-selected sample, not representative of all users." }
   };
 
   // 帶參數的字串:t("key", {r: 500})

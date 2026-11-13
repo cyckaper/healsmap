@@ -46,8 +46,28 @@
 - **整體**:綠覆率(全綠地)、3-30-300 可及性
 - **法規對照**:都市計畫法 §45(公園綠地廣場兒童遊樂場 ≥ 計畫面積 10%)、通盤檢討辦法(兒童遊樂場 ≥0.1ha、閭鄰公園 ≥0.5ha、社區公園 ≥4ha)、3-30-300 準則
 
+### NDVI 植群分析(Sentinel-2 衛星影像)
+按「分析 NDVI 植群」(或「分析周邊綠地」時自動一併執行),以 Copernicus **Sentinel-2 L2A**(10 m)計算 **NDVI =(近紅外 B08 − 紅光 B04)÷(B08 + B04)**;其高植生比例並作為熱環境與療癒綠地指數的樹冠代理(見下節):
+- **選景**:向 Element 84 Earth Search(STAC)查近一年場景雲量 < 60% 的影像,依日期由新到舊讀基地處的 **SCL 場景分類**,遮除雲 / 雲影 / 缺值,採第一景「基地晴空 ≥ 90%」者(都不足時取最佳且 ≥ 50%)
+- **讀取**:瀏覽器以 HTTP Range 只讀基地所在的 COG 圖塊(AWS Open Data `sentinel-cogs`,免金鑰、支援 CORS),每次約 3–8 MB
+- **範圍**:點模式 = 標記周邊 500 m(同綠地分析);面模式 = 基地範圍內
+- **指標**:平均 / 中位數 NDVI、植被覆蓋率(NDVI ≥ 0.2)、高植生比例(NDVI ≥ 0.6,樹冠粗略代理,對照 3-30-300 的 30%)、五級分級面積比例、晴空像元比例
+- **地圖**:10 m 像元分布圖(重投影至 Web Mercator),點圖可查單一像元值;報告匯出附分布圖
+- 反射率換算:`sentinel-cogs` 的像元值已扣除 ESA 的 +1000 偏移(STAC `earthsearch:boa_offset_applied: true`),**不可**再套 STAC `raster:bands` 的 offset −0.1;另以 SCL 植生像元紅光中位數做經驗檢核
+
+### 在地評價 · 評論分析(Google 地圖評論等)
+分析**使用者自行提供**的評論文字:
+- 「在 Google 地圖開啟基地位置」(Maps URLs,免金鑰)方便閱讀、摘錄評論
+- 貼上:可把 Google 地圖評論列表整段貼上,自動略去作者名稱、「在地嚮導 · N 則評論」、相對時間、按鈕字樣與業主回應;其他文字以空行分隔;行首「★★★★☆」「4/5」「4 顆星」記為星等。亦可上傳 CSV / Excel / TXT
+- 本地統計:則數、平均評分與星等分布、19 個**景觀 · 健康面向**被提及則數(遮蔭、炎熱、綠意、放鬆療癒、步道運動、兒童、座椅、廁所、整潔、維護、安全照明、無障礙、交通停車、聲環境、人潮、蚊蟲、景觀、生態、寵物)、關鍵詞
+- 「AI 分析評論主題與情緒」:送 `/api/analyze`(`mode: reviews_analysis`)歸納整體評價、受肯定面向、痛點與對規劃設計的意涵(最多 150 則 / 約 3 萬字)
+- **不自動擷取 Google 評論**:Google Maps Platform 條款 §3.2.3(e) 禁止在非 Google 地圖上或旁使用 Places 內容(本站底圖為 NLSC)、§3.2.3(a)(iii) 禁止複製保存使用者評論;唯一可與非 Google 地圖並用的是 Places UI Kit(Service Specific Terms §15.1),但其內容不可擷取分析
+
 ### 熱環境 · 健康研判
-綠覆率(對 3-30-300 的 30% 樹冠目標)× 脆弱族群(高齡 + 幼年比例)→ 綜合**高溫脆弱度**(低/中/高)。屬研判,非實測。
+樹冠代理(對 3-30-300 的 30% 樹冠目標)× 脆弱族群(高齡 + 幼年比例)→ 綜合**高溫脆弱度**(低/中/高)。屬研判,非實測。
+- **樹冠代理**:有 NDVI 結果時採 Sentinel-2 **NDVI ≥ 0.6 高植生比例**;NDVI 無法取得(雲遮、連線)時退回 OSM 綠覆率(下限估計)。「療癒綠地介入需求」的綠地匱乏因子同此。
+- 不採 NDVI ≥ 0.2 的植被覆蓋率:它含草地與稀疏植生,一般街廓多已超過 30%(如臺大校園周邊 500 m 為 80.6%),綠地缺口會失去鑑別力;高植生比例(臺大 28.4%、西門町 0.5%)較接近 30% 樹冠目標的本意。
+- 熱環境資料中的 `green_input` 標示實際採用的來源(`ndvi_dense_veg_pct` / `osm_green_coverage_pct`)。
 
 ### AI 解讀
 將上述真實數值送至後端 `/api/analyze`,由 Claude 產生五段式繁中報告(基地概述 / 開放空間綠地 / 熱環境健康 / 規劃建議 / 資料與限制),嚴格限定只用提供的數值並引用法規。
@@ -83,7 +103,9 @@
   ├─ OSM Nominatim                       地名搜尋
   ├─ Open-Meteo (ERA5)                   氣候背景
   ├─ iNaturalist                         生態 · 生物多樣性
-  └─ unpkg CDN (SheetJS)                 .xlsx 解析(意見圖層)
+  ├─ Element 84 Earth Search (STAC)      Sentinel-2 選景(NDVI)
+  ├─ AWS Open Data sentinel-cogs (S3)    Sentinel-2 COG 圖塊(HTTP Range 讀取)
+  └─ unpkg CDN (SheetJS, geotiff.js)     .xlsx 解析、COG 解碼(首次使用時才載入)
 ```
 
 - **前端**:純靜態(`public/`),無框架,vanilla JS。
@@ -105,6 +127,7 @@
 | **Netlify**(託管 + Functions) | 免費額度內 | 免費方案:每月 100 GB 流量、Functions 12.5 萬次呼叫/125 萬次·秒執行;超量才付費 | Netlify → Team → **Usage** / **Billing** |
 | **Anthropic API**(Claude) | **是,按用量** | 依 **token** 計費(輸入 + 輸出),`claude-haiku-4-5`:約 **US$1 / 百萬輸入 token**、**US$5 / 百萬輸出 token** | console.anthropic.com → **Usage** / **Billing**(可設用量上限與額度警示) |
 | NLSC / 地質所 / Overpass / Nominatim / Open-Meteo / iNaturalist | 免費 | 公開政府/開源服務,免金鑰 | — |
+| Element 84 Earth Search / AWS Open Data(Sentinel-2) | 免費 | 公開 STAC 目錄與 S3 公開資料集,免金鑰(流量由 AWS Open Data 計畫負擔) | — |
 | unpkg(SheetJS CDN) | 免費 | 公共 CDN | — |
 
 **唯一會持續產生費用的是 Anthropic API**,其餘在正常使用量下都在免費額度內。
@@ -117,6 +140,7 @@
 |---|---|---|---|
 | **產生 AI 基地分析報告** | ~2,000(系統提示+數據,且系統提示有 **prompt caching** 折扣) | ~1,500(七節報告) | **約 US$0.02–0.03(約 NT$0.7–1)** |
 | **AI 摘要意見主題** | 視意見則數,~1,000–6,000 | ~600 | **約 US$0.01–0.03(約 NT$0.3–1)** |
+| **AI 分析評論主題與情緒** | 視評論則數,~1,000–25,000(上限約 3 萬字) | ~700 | **約 US$0.01–0.03(約 NT$0.3–1)** |
 
 - 粗估:**每次 AI 動作約新台幣 1 元上下**;1 美元大約可跑 30–50 次報告。
 - **省錢設計**:系統提示已開 **prompt caching**(重複部分打折);意見摘要上限 200 則;只有「按按鈕」才呼叫 AI,瀏覽看地圖/疊圖/詞頻統計**完全不花錢**。
@@ -144,6 +168,8 @@
 │   │   ├── app.js                # 主程式(地圖、分析、AI、匯出)
 │   │   ├── i18n.js               # 中英雙語字典
 │   │   ├── openspace-service-level.js  # 開放空間服務水準模組
+│   │   ├── ndvi-analysis.js      # NDVI 植群分析(Sentinel-2 選景、COG 讀取、NDVI、疊圖)
+│   │   ├── review-analysis.js    # 在地評價 · 評論文字解析與統計
 │   │   └── comments-layer.js     # 使用者意見圖層(xlsx/csv 上傳)
 │   └── data/                     # 建置時產生(gitignored)
 │       ├── towns.json            # 鄉鎮市區界線 + 人口指標
@@ -204,6 +230,7 @@ npx serve public          # 或 python3 -m http.server -d public
 | 行政界線(村里、鄉鎮市區) | NLSC / [taiwan-atlas](https://github.com/dkaoster/taiwan-atlas)(TopoJSON, MIT) |
 | 人口統計 | 內政部戶政司 rs-opendata(ODRP 系列) |
 | 綠地圖徵 | © OpenStreetMap 貢獻者(ODbL),經 Overpass API |
+| NDVI | 含經修改之 Copernicus Sentinel 資料(Sentinel-2 L2A,ESA;免費開放授權),經 AWS Open Data `sentinel-cogs` 與 Element 84 Earth Search |
 | 地名搜尋 | OpenStreetMap Nominatim |
 | 土壤液化 / 活動斷層 | 經濟部地質調查及礦業管理中心 WMS |
 | AI 解讀 | Anthropic Claude |
@@ -217,6 +244,8 @@ Leaflet 1.9 · Leaflet.draw · turf.js 6.5 · marked 12 · Cloudflare Pages Func
 
 ## 方法與限制
 - **綠地與綠覆率**:來自 OpenStreetMap 即時查詢,屬**下限估計**,可能不完整;官方綠地實況請對照「國土利用調查」疊圖。
+- **NDVI**:單一日期衛星影像,受季節、物候、日照與雲影響;10 m 像元會混合地物;NDVI 反映植生量與活力,不等同樹冠覆蓋率;分級門檻(0 / 0.2 / 0.4 / 0.6)為慣用概略值。
+- **在地評價**:評論為使用者自行提供之自發性樣本,不代表全體使用者;面向統計為關鍵詞比對,只表示被提及、不分正負評。
 - **熱環境 / 健康**:依代理指標(綠覆率、脆弱族群)與實證關聯之**研判**,非實測氣溫或健康數據。
 - **法規對照**:§45 的 10% 是針對「都市計畫區」整體而非單一基地,工具以準則對照呈現,非合法性認定。
 - **AI 報告**:僅依提供之數值生成,缺漏會標示「資料不足」。

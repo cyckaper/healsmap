@@ -208,7 +208,8 @@ html, body {
 
 #green-btn,
 #ai-btn,
-#biodiv-btn {
+#biodiv-btn,
+#ndvi-btn {
   width: 100%;
   margin-bottom: 10px;
 }
@@ -468,3 +469,70 @@ html, body {
   color: var(--text-dim);
 }
 .help-body b { color: var(--text); font-weight: 600; }
+
+/* ---------- NDVI 植群分析 ---------- */
+.ndvi-stack {
+  grid-column: 1 / -1;
+  display: flex;
+  height: 12px;
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 4px 0 2px;
+  background: var(--panel-2);
+}
+.ndvi-stack span { display: block; height: 100%; min-width: 0; }
+.ind .ndvi-sw {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  margin-right: 4px;
+  vertical-align: 0;
+}
+.ndvi-map-ctl { margin-top: 10px; }
+.ndvi-legend { margin: 4px 0 2px; }
+.ndvi-legend .bar { height: 10px; border-radius: 3px; }
+.ndvi-legend .ticks {
+  position: relative;
+  height: 14px;
+  font-size: 10px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.ndvi-legend .ticks span { position: absolute; transform: translateX(-50%); top: 1px; }
+.ndvi-legend .cloud { font-size: 10.5px; color: var(--text-dim); margin-top: 2px; }
+.ndvi-legend .cloud i {
+  display: inline-block; width: 9px; height: 9px; border-radius: 2px;
+  background: rgba(150, 150, 150, 0.7); margin-right: 4px; vertical-align: 0;
+}
+.ndvi-probe { margin-top: 4px; min-height: 16px; }
+.ndvi-overlay { image-rendering: pixelated; image-rendering: crisp-edges; }
+
+/* ---------- 在地評價 · 評論分析 ---------- */
+.rv-gmaps { width: 100%; margin-bottom: 8px; }
+.rv-input,
+.rv-text {
+  width: 100%;
+  display: block;
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  line-height: 1.5;
+}
+.rv-text { resize: vertical; min-height: 96px; }
+.rv-input:focus,
+.rv-text:focus { outline: none; border-color: var(--accent); }
+.btn-row { display: flex; gap: 6px; margin-bottom: 10px; }
+.btn-row .tool-btn { flex: 1 1 auto; text-align: center; padding: 8px 6px; font-size: 13px; }
+.rv-bars { grid-column: 1 / -1; margin: 2px 0 4px; }
+.rv-bar { display: flex; align-items: center; gap: 6px; font-size: 12px; margin: 2px 0; }
+.rv-bar-t { flex: 0 0 96px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rv-bar-b { height: 8px; border-radius: 3px; background: var(--accent); opacity: 0.85; min-width: 2px; }
+.rv-bar-b.star { background: #d8a657; }
+.rv-bar-n { color: var(--text-dim); font-size: 11px; margin-left: auto; white-space: nowrap; }
+.info-region .u { font-size: 11.5px; color: var(--text-dim); }

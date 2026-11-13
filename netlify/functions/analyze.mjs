@@ -27,14 +27,16 @@ const SYSTEM_PROMPT = `你是台灣的都市規劃與基地分析助理。請依
 7. 若提供 openspace_service_level 欄位(開放空間服務水準),以其總分(overall,0-100)、等級(band)及五面向(綠地公園、運動遊憩、自行車步道、大眾運輸、公廁)的最近距離與數量,評估步行 10 分鐘生活圈的開放空間可及性與服務完整度;指出短板面向並對應規劃建議。此為 OSM/Overpass 即時查詢之下限估計,須標示限制。
 8. 若提供 healing_green_intervention 欄位(療癒綠地介入需求指數),以其 index(0-100)、priority_level 與 dominant_factor(主導因子:green=綠地匱乏、vuln=脆弱族群、heat=熱壓力、access=可及性不足)研判此基地導入「療癒性綠地/療癒景觀」的優先程度,並針對主導因子提出對應的療癒景觀設計策略(如:面向高齡與幼童的療癒花園、林蔭降溫廊道、可及的鄰里口袋綠地、感官與復癒性植栽)。此為多因子加權之研判性指標,非實測健康數據,須標示為研判。
 9. 若提供 air_quality 欄位(環境部最近測站即時空氣品質),以其 aqi、status、pm25、main_pollutant 與測站距離(distance_km)說明基地周邊空氣品質現況,並結合綠地/植栽提出對應建議(如:臨路綠籬與喬木對微粒的攔截、避免在高污染時段的開放活動設計)。須標示為「最近測站」之即時參考(每小時更新),測站距基地有距離、非基地實測。
+10. 若提供 ndvi 欄位(Copernicus Sentinel-2 L2A 衛星影像、10 m 像元計算之 NDVI),以 scene_date、mean/median、veg_cover_pct_ndvi_ge_0_2(植被覆蓋率)、dense_veg_pct_ndvi_ge_0_6(高植生比例,可作喬木樹冠的粗略代理,對照 3-30-300 的 30% 樹冠目標)與 class_pct(分級面積比例)評估植群量與分布;並與 green 欄位的 OSM 綠覆率比較(OSM 多為下限估計,NDVI 另能涵蓋行道樹、私有庭園與零星植栽,兩者落差可點出未納入正式綠地的植栽)。須標示:單一日期影像(受季節、物候影響)、10 m 像元會混合地物、NDVI 反映植生量與活力而非樹冠覆蓋率;clear_sky_pct 低於 90% 時提醒部分像元受雲遮。heat.green_input 為 ndvi_dense_veg_pct 時,熱環境研判與 healing_green_intervention 的綠地匱乏因子是以 NDVI 高植生比例(樹冠代理)計算(heat.green_coverage_pct 即該值,heat.osm_green_coverage_pct 為 OSM 參考值);為 osm_green_coverage_pct 時則以 OSM 綠覆率(下限估計)計算,解讀時依實際來源描述。
+11. 若提供 site_reviews 欄位(使用者自行提供之評論文字的分析:review_count、avg_rating、aspect_mentions 為各景觀/健康面向被提及的則數、top_keywords、sample_reviews、ai_summary),將使用者觀點納入評估與規劃建議(正面要素保留強化、痛點優先改善,並扣回綠地、遮蔭、設施等數據);須標示評論為自發性、非隨機樣本,不代表全體使用者,aspect_mentions 只表示被提及、不分正負評;不要大量逐字引用評論,也不要提及任何評論者身分。
 
 報告結構(用簡短段落與條列,務求精煉好讀):
 一、基地概述(位置、所在行政區、人口結構重點)
-二、開放空間與綠地評估(可及性、綠覆、對照法規/準則,符合或不足;若有 openspace_service_level 資料,納入步行 10 分鐘服務水準總分與短板面向)
+二、開放空間與綠地評估(可及性、綠覆、對照法規/準則,符合或不足;若有 openspace_service_level 資料,納入步行 10 分鐘服務水準總分與短板面向;若有 ndvi 資料,納入衛星 NDVI 植被覆蓋率與高植生比例,並與 OSM 綠覆率對照)
 三、氣候背景與微氣候(若有 climate 資料:氣溫、雨量、盛行風向、日射量及其設計意涵;無資料則略過)
 四、熱環境與健康研判(高溫脆弱度與成因、敏感族群,結合氣候與綠覆綜合研判;若有 air_quality 資料,簡述最近測站空氣品質與綠化對策;若有 healing_green_intervention 資料,提出療癒綠地介入優先度與對應療癒景觀設計策略;標示為研判)
 五、生態與生物多樣性(若有 biodiversity 資料:物種豐富度、分類群、受脅物種數的定性說明,標示 iNaturalist 涵蓋度限制;切勿列舉物種清單;無資料則略過)
-六、規劃建議(2-4 點,具體、可行,扣回前述數據與法規)
+六、規劃建議(2-4 點,具體、可行,扣回前述數據與法規;若有 site_reviews 資料,回應評論中的主要痛點與受肯定之處)
 七、資料與限制說明(資料來源、代理指標、不確定性)
 
 語氣:專業、客觀、精準。全文控制在約 450-600 字(英文版約 300-450 words),寧可精煉也不要冗長;各節 2-3 句即可,務必完整寫到「資料與限制說明」一節作結,不可中途停筆或在列舉清單處打住。`;
@@ -71,6 +73,8 @@ export default async (req) => {
 
   // 意見摘要模式:只摘要使用者上傳之意見主題,不走完整基地報告
   const isComments = data && data.mode === "comments_summary";
+  // 在地評價模式:分析使用者自行提供的評論文字(Google 地圖評論、PTT、問卷等)
+  const isReviews = data && data.mode === "reviews_analysis";
   let systemPrompt = SYSTEM_PROMPT;
   let userContent;
   if (isComments) {
@@ -92,6 +96,65 @@ export default async (req) => {
       ? ("Comments" + (data.region ? " near " + data.region : "") + " (" + comments.length + " items):\n\n")
       : ("以下為" + (data.region ? data.region + "附近" : "選定範圍內") + "的使用者意見(共 " + comments.length + " 則):\n\n");
     userContent = head + comments.map(function (c, i) { return (i + 1) + ". " + String(c).replace(/\n/g, " ").trim(); }).join("\n");
+  } else if (isReviews) {
+    // 後端同樣設上限(則數 / 每則字數 / 總字數),控制 token 成本與 Function 執行時間
+    const MAX_N = 150, MAX_LEN = 600, BUDGET = 32000;
+    const reviews = [];
+    let used = 0;
+    for (const r of (Array.isArray(data.reviews) ? data.reviews : [])) {
+      let s = String(r == null ? "" : r).replace(/\s+/g, " ").trim();
+      if (!s) continue;
+      if (s.length > MAX_LEN) s = s.slice(0, MAX_LEN) + "…";
+      if (reviews.length >= MAX_N || (used + s.length > BUDGET && reviews.length)) break;
+      used += s.length;
+      reviews.push(s);
+    }
+    if (!reviews.length) return json({ error: lang === "en" ? "No reviews to analyze." : "沒有可分析的評論。" }, 400);
+    const total = (typeof data.total === "number" && data.total >= reviews.length) ? data.total : reviews.length;
+    const truncated = total > reviews.length;
+    const clip = (v, n) => (v == null ? "" : String(v).replace(/\s+/g, " ").trim().slice(0, n));
+    const place = clip(data.place, 80), region = clip(data.region, 80);
+    // 依實際情況產生「準確」的免責句(不讓模型自行編造則數或抽樣方式)
+    const caveat = lang === "en"
+      ? (truncated
+          ? ("Caveat: based on the first " + reviews.length + " of " + total + " reviews supplied by the user (in the order given, not sampled). Reviews are a self-selected sample and do not represent all users.")
+          : ("Caveat: based on the " + reviews.length + " reviews supplied by the user. Reviews are a self-selected sample and do not represent all users."))
+      : (truncated
+          ? ("提醒:本分析僅依使用者提供之 " + total + " 則評論中、依原順序的前 " + reviews.length + " 則(非抽樣);評論為自發性樣本,不代表全體使用者。")
+          : ("提醒:本分析僅依使用者提供之 " + reviews.length + " 則評論;評論為自發性樣本,不代表全體使用者。"));
+    systemPrompt = lang === "en"
+      ? ("You analyze user reviews of a place for landscape planning and healthy-environment design. The reviews (some prefixed with a [N★] rating) were supplied by the user. Write, in English, using Markdown H3 (###) headings and bullet lists:\n" +
+         "### Overall impression\n1-2 sentences on overall sentiment—describe the positive/neutral/negative balance qualitatively (\"most\", \"about half\", \"a few\"), no exact percentages; cite the average rating if a rating summary is given.\n" +
+         "### What people value\n2-4 bullets: short label, how common, and one short verbatim quote.\n" +
+         "### Pain points\n2-4 bullets in the same format; say so plainly if there are hardly any complaints.\n" +
+         "### Design implications\n3-4 specific, actionable recommendations tied to the reviews (e.g. shade and thermal comfort, planting and greenery, seating, toilets and cleaning/maintenance, walking and exercise, child- and senior-friendliness, accessibility, safety lighting, mosquitoes, crowd management, relaxation and restoration).\n" +
+         "Rules: use only the provided reviews and never invent content; quotes must be short verbatim excerpts (≤ 20 words) with no reviewer names or personal data; do not state the total number of reviews yourself; no H1/H2 title; about 250-400 words. End with EXACTLY this caveat line verbatim: " + caveat)
+      : ("你是景觀規劃與健康環境的使用者評論分析助理。以下是使用者提供、關於某基地或場所的評論(部分開頭有 [N★] 星等標記)。請以繁體中文、Markdown 小標(###)與條列整理:\n" +
+         "### 整體評價\n1-2 句說明整體情緒傾向:以「多數、約半數、少數」等定性方式描述正面、中性、負面的比例,不要給精確百分比;若有星等摘要可引用平均評分。\n" +
+         "### 受肯定的面向\n2-4 點:每點一個簡短標題、常見程度,並附 1 句評論原文中的代表性短引述。\n" +
+         "### 痛點與抱怨\n2-4 點,格式同上;若評論幾乎沒有負面內容就直說。\n" +
+         "### 對景觀規劃設計的意涵\n3-4 點具體、可執行的建議,須扣回評論內容(可涉及遮蔭與熱舒適、植栽與綠意、休憩座椅、廁所與清潔維護、步行與運動、兒童與高齡友善、無障礙、安全照明、蚊蟲、人潮管理、放鬆與療癒等)。\n" +
+         "規則:只能根據提供的評論,不可杜撰;引述須為評論原文中的短句(30 字以內),不要附作者名或任何個人資料;不要自行宣稱評論總則數;不要輸出 H1 / H2 大標題;全文約 350-500 字。結尾請「原文照抄」以下這句免責提醒:" + caveat);
+    const head = lang === "en"
+      ? ((place ? "Reviewed place: " + place + (region ? " (" + region + ")" : "") + "\n" : (region ? "Area: " + region + "\n" : "")) +
+         "Reviews supplied by the user (" + reviews.length + " items):\n\n")
+      : ((place ? "評論對象:" + place + (region ? "(" + region + ")" : "") + "\n" : (region ? "所在地區:" + region + "\n" : "")) +
+         "以下為使用者提供的評論(共 " + reviews.length + " 則):\n\n");
+    let extra = "";
+    const rs = data.rating_summary;
+    if (rs && typeof rs.average === "number" && typeof rs.rated === "number") {
+      const dist = Array.isArray(rs.distribution_1_to_5) ? rs.distribution_1_to_5.slice(0, 5).map(Number).join(", ") : "";
+      extra += lang === "en"
+        ? ("\n\nRating summary (computed locally): " + rs.rated + " rated reviews, average " + rs.average + "★" + (dist ? ", counts for 1–5★: [" + dist + "]" : "") + ".")
+        : ("\n\n星等摘要(本地計算):含星等 " + rs.rated + " 則,平均 " + rs.average + "★" + (dist ? ",1–5 星則數:[" + dist + "]" : "") + "。");
+    }
+    if (Array.isArray(data.aspect_mentions) && data.aspect_mentions.length) {
+      const asp = data.aspect_mentions.slice(0, 12).map(function (a) { return clip(a && a.aspect, 30) + " " + (Number(a && a.reviews) || 0); }).join("、");
+      extra += lang === "en"
+        ? ("\nKeyword-based aspect mentions (reviews mentioning; not sentiment, for reference only): " + asp)
+        : ("\n本地關鍵詞面向統計(提及則數,不分正負,僅供參考):" + asp);
+    }
+    userContent = head + reviews.map(function (c, i) { return (i + 1) + ". " + c; }).join("\n") + extra;
   } else {
     userContent = lang === "en"
       ? "Below are the real analysis figures (JSON) for a site. Write the site analysis report in English, following the required structure and rules. Keep Taiwanese place names and species names; you may keep scientific names as-is.\n\n```json\n" + JSON.stringify(data, null, 2) + "\n```"
@@ -128,7 +191,7 @@ export default async (req) => {
   // 解析 Anthropic SSE,逐塊把文字 delta 以純文字串流回前端;同時擷取 token 用量
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
-  const reqMode = isComments ? "comments_summary" : "site_report";
+  const reqMode = isComments ? "comments_summary" : isReviews ? "reviews_analysis" : "site_report";
   const stream = new ReadableStream({
     async start(controller) {
       const reader = upstream.body.getReader();
