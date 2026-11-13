@@ -1815,15 +1815,12 @@
   }
 
   // =========================================================
-  //  在地評價 · 評論分析
-  //  ① 抓取 Google 評論:後端 /api/reviews(Places API (New),金鑰 GOOGLE_MAPS_API_KEY)
-  //  ② 或貼上 / 上傳其他評論(review-analysis 模組解析)
-  //  抓回的 Google 評論只在本次頁面顯示(附作者署名與 Google Maps 標示),不畫在地圖上,
-  //  也不寫入歷史紀錄或匯出檔;保存的只有統計與 AI 分析結果。
+  //  在地評價 · 評論分析(review-analysis 模組;分析使用者自行提供的評論文字)
+  //  不自動擷取 Google 評論:Google Maps Platform 條款禁止在非 Google 地圖上 / 旁
+  //  使用 Places 內容(§3.2.3(e)),亦禁止複製保存使用者評論(§3.2.3(a)(iii))。
   // =========================================================
   var rvRegionEl = document.getElementById("rv-region");
-  var rvFetchBtn = document.getElementById("rv-fetch");
-  var rvPlacesEl = document.getElementById("rv-places");
+  var rvGmapsBtn = document.getElementById("rv-gmaps");
   var rvNameEl = document.getElementById("rv-name");
   var rvTextEl = document.getElementById("rv-text");
   var rvFileEl = document.getElementById("rv-file");
@@ -1850,112 +1847,29 @@
     rvRegionEl.textContent = t("rv.hint");
     rvIndEl.innerHTML = "";
     rvSummaryEl.innerHTML = "";
-    rvPlacesEl.innerHTML = "";
     rvAiOutputEl.innerHTML = "";
     rvActionsEl.style.display = "none";
     rvSourceEl.textContent = "";
   }
 
-  function safeUrl(u) { return /^https:\/\//i.test(u || "") ? String(u).replace(/'/g, "%27") : ""; }
-
-  // 面模式:以範圍中心為圓心、到最遠頂點的距離為半徑(由 Google 端做範圍篩選,本站不以 Places 座標做點在面內判斷)
-  function siteSearchRadius(poly, focus) {
-    var far = 0;
-    try {
-      var c = turf.point([focus.lng, focus.lat]);
-      turf.coordAll(poly).forEach(function (xy) { far = Math.max(far, turf.distance(c, turf.point(xy), { units: "meters" })); });
-    } catch (e) { far = GREEN_RADIUS; }
-    return Math.min(5000, Math.max(100, Math.ceil(far / 10) * 10));
-  }
-
-  // ① 抓取 Google 評論
-  rvFetchBtn.addEventListener("click", function () {
-    if (/github\.io$/i.test(location.hostname)) { rvNotice(t("ai.ghPages")); return; }
-    var focus = lastFocus || map.getCenter();
-    var radius = lastSitePolygon ? siteSearchRadius(lastSitePolygon, focus) : GREEN_RADIUS;
-    var query = rvNameEl.value.trim();
-    rvFetchBtn.disabled = true;
-    rvNotice(t("rv.fetching"));
-    fetchWithTimeout("./api/reviews", 25000, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        lat: +focus.lat.toFixed(6), lng: +focus.lng.toFixed(6), radius: radius,
-        lang: (window.i18nLang ? window.i18nLang() : "zh"), query: query || null
-      })
-    })
-      .then(function (r) {
-        return r.text().then(function (txt) {
-          var j = null; try { j = JSON.parse(txt); } catch (e) { /* 非 JSON */ }
-          if (!r.ok || !j) throw new Error((j && j.error) || ("HTTP " + r.status));
-          return j;
-        });
-      })
-      .then(function (data) {
-        var places = data.places || [], reviews = [];
-        places.forEach(function (p) {
-          (p.reviews || []).forEach(function (rv) {
-            if (!rv.text) return;
-            reviews.push({
-              text: String(rv.text).replace(/\s+/g, " ").trim(), rating: rv.rating != null ? rv.rating : null,
-              place: p.name, author: rv.author || "", authorUri: rv.author_uri || "",
-              time: rv.relative_time || "", mapsUri: rv.maps_uri || "", translated: !!rv.translated
-            });
-          });
-        });
-        if (!reviews.length) {
-          rvNotice(places.length ? t("rv.fetchNoText", { p: places.length }) : t("rv.fetchNone"));
-          return;
-        }
-        runReviewAnalysis(reviews, {
-          format: "google_places", mode: data.mode, radius: data.radius, query: data.query || null,
-          places: places.map(function (p) {
-            return { name: p.name, type: p.type, rating: p.rating, count: p.user_rating_count, mapsUri: p.maps_uri, n: (p.reviews || []).length };
-          })
-        });
-      })
-      .catch(function (err) {
-        var msg = err && err.name === "AbortError" ? t("rv.fetchTimeout") : String((err && err.message) || err);
-        rvNotice(t("rv.fetchErr") + msg);
-      })
-      .finally(function () { rvFetchBtn.disabled = false; });
+  // Google 地圖 Maps URLs(免金鑰):有填評論對象就以名稱(加縣市區)搜尋,否則開在焦點座標
+  rvGmapsBtn.addEventListener("click", function () {
+    var name = rvNameEl.value.trim(), q;
+    if (name) {
+      var p = lastRegionProps || {};
+      q = name + (p.COUNTYNAME ? " " + p.COUNTYNAME + (p.TOWNNAME || "") : "");
+    } else {
+      var f = lastFocus || map.getCenter();
+      q = f.lat.toFixed(6) + "," + f.lng.toFixed(6);
+    }
+    window.open("https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(q), "_blank", "noopener");
   });
-
-  // 抓回的 Google 評論:來源地點(評分 / 評論數 / Google 地圖連結)+ 全部評論(附作者署名);不進歷史快照
-  function renderGooglePlaces() {
-    var o = rvState.origin || {};
-    if (o.format !== "google_places") { rvPlacesEl.innerHTML = ""; return; }
-    var html = "<h3 class='cm-sec-title'>" + t("rv.gpTitle") + "</h3><ul class='rv-places'>";
-    (o.places || []).forEach(function (p) {
-      var u = safeUrl(p.mapsUri);
-      var name = esc(p.name || "—");
-      html += "<li>" + (u ? "<a href='" + u + "' target='_blank' rel='noopener'>" + name + "</a>" : name) +
-        " <span class='u'>" + esc(p.type || "") +
-        (p.rating != null ? " · ★" + p.rating + (p.count != null ? "(" + Number(p.count).toLocaleString() + ")" : "") : "") +
-        " · " + t("rv.gpFetched", { n: p.n }) + "</span></li>";
-    });
-    html += "</ul><details class='rv-gp-all'><summary>" + t("rv.gpAll", { n: rvState.reviews.length }) + "</summary><ul class='cm-samples'>";
-    rvState.reviews.forEach(function (r) {
-      var au = safeUrl(r.authorUri), author = esc(r.author || "—");
-      html += "<li>" + (r.rating != null ? "<b>" + "★".repeat(Math.round(r.rating)) + "</b> " : "") + esc(r.text) +
-        " <span class='u'>— " + (au ? "<a href='" + au + "' target='_blank' rel='noopener'>" + author + "</a>" : author) +
-        (r.time ? " · " + esc(r.time) : "") + " · " + esc(r.place || "") +
-        (r.translated ? " · " + t("rv.gpTranslated") : "") + "</span></li>";
-    });
-    html += "</ul></details><p class='hint'>" + t("rv.gpAttr") + "</p>";
-    rvPlacesEl.innerHTML = html;
-  }
 
   function reviewsForAnalysis() {
     var s = rvState.stats, o = rvState.origin || {};
-    var google = o.format === "google_places";
     return {
-      // google_places = 由 Places API 抓取;google = 由 Google 地圖評論列表複製貼上;plain = 一般文字;file = 上傳檔案
-      source_format: o.format || "plain",
-      place: (google ? o.query : rvNameEl.value.trim()) || null,
-      search: google ? { mode: o.mode, radius_m: o.radius, places: (o.places || []).map(function (p) {
-        return { name: p.name, type: p.type, rating: p.rating, user_rating_count: p.count, reviews_fetched: p.n };
-      }) } : null,
+      source_format: o.format || "plain", // google = 由 Google 地圖評論列表複製貼上;plain = 一般文字;file = 上傳檔案
+      place: rvNameEl.value.trim() || null,
       review_count: s.count,
       rated_count: s.rated,
       avg_rating: s.avgRating,
@@ -1964,8 +1878,7 @@
         return { key: a.key, aspect: t("rv.a." + a.key), reviews: a.count, pct: a.pct };
       }),
       top_keywords: s.topWords.slice(0, 10).map(function (w) { return w.word + "(" + w.count + ")"; }),
-      // Google 抓取的評論原文不保存(只保存統計與 AI 分析)
-      sample_reviews: google ? [] : s.samples.slice(0, 5).map(function (x) { return x.length > 200 ? x.slice(0, 200) + "…" : x; }),
+      sample_reviews: s.samples.slice(0, 5).map(function (x) { return x.length > 200 ? x.slice(0, 200) + "…" : x; }),
       ai_summary: rvState.aiText || null
     };
   }
@@ -1982,12 +1895,8 @@
   function renderReviewStats() {
     var s = rvState.stats, o = rvState.origin || {};
     if (!s) return;
-    var google = o.format === "google_places";
-    var target = esc((google ? o.query : rvNameEl.value.trim()) || (google ? t("rv.targetGoogle") : t("rv.targetDefault")));
-    var fmt = google ? t("rv.fmtGoogleApi", {
-        scope: o.mode === "text" ? t("rv.scopeText", { q: esc(o.query || "") }) : t("rv.scopeNearby", { r: o.radius }),
-        p: (o.places || []).length })
-      : o.format === "google" ? t("rv.fmtGoogle", { k: o.dropped ? o.dropped.names : 0, o: o.dropped ? o.dropped.owner : 0 })
+    var target = esc(rvNameEl.value.trim() || t("rv.targetDefault"));
+    var fmt = o.format === "google" ? t("rv.fmtGoogle", { k: o.dropped ? o.dropped.names : 0, o: o.dropped ? o.dropped.owner : 0 })
       : o.format === "file" ? t("rv.fmtFile", { f: esc(o.file || "") }) : "";
     rvRegionEl.innerHTML = t("rv.result", { target: target, n: s.count, fmt: fmt });
     rvIndEl.innerHTML =
@@ -2018,13 +1927,11 @@
       });
       html += "</div>";
     }
-    // Google 抓取的評論改在下方「來源地點」區附作者署名完整列出,這裡不重複列(避免無署名轉載)
-    if (s.samples.length && !google) {
+    if (s.samples.length) {
       html += "<div class='ghdr'>" + t("rv.samples") + "</div><ul class='cm-samples'>" +
         s.samples.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>";
     }
     rvSummaryEl.innerHTML = html;
-    renderGooglePlaces();
     rvSourceEl.innerHTML = t("rv.note");
   }
 
@@ -2106,19 +2013,16 @@
       var txt = r.text.length > RV_AI_MAXLEN ? r.text.slice(0, RV_AI_MAXLEN) + "…" : r.text;
       if (used + txt.length > RV_AI_BUDGET && texts.length) break;
       used += txt.length;
-      // 標上來源地點與星等,讓 AI 能指出是哪個場所的環境影響使用者
-      var tag = [r.place || "", r.rating != null ? r.rating + "★" : ""].filter(Boolean).join(" · ");
-      texts.push((tag ? "[" + tag + "] " : "") + txt);
+      texts.push((r.rating != null ? "[" + r.rating + "★] " : "") + txt);
     }
-    var s = rvState.stats, ro = rvState.origin || {};
+    var s = rvState.stats;
     var payload = {
       mode: "reviews_analysis",
       lang: (window.i18nLang ? window.i18nLang() : "zh"),
-      source: ro.format === "google_places" ? "google_places" : "user_supplied",
       reviews: texts,
       total: rvState.reviews.length,
       truncated: rvState.reviews.length > texts.length,
-      place: (ro.format === "google_places" ? ro.query : rvNameEl.value.trim()) || null,
+      place: rvNameEl.value.trim() || null,
       region: lastRegionTitle || null,
       rating_summary: s.rated ? { rated: s.rated, average: s.avgRating, distribution_1_to_5: s.dist } : null,
       aspect_mentions: s.aspects.slice(0, 12).map(function (a) { return { aspect: t("rv.a." + a.key), reviews: a.count }; })
@@ -2584,15 +2488,8 @@
 
     var sr = lastAnalysis.site_reviews;
     if (sr) {
-      var srGoogle = sr.source_format === "google_places" && sr.search;
       html += "<h2>" + t("r.hReviews") + "</h2><table class='summary'>" +
-        prow(t("r.rvTarget"), esc(sr.place || (srGoogle ? t("rv.targetGoogle") : "—"))) +
-        (srGoogle ? prow(t("r.rvSource"), t("r.rvSrcGoogle", {
-          scope: sr.search.mode === "text" ? t("rv.scopeText", { q: esc(sr.place || "") }) : t("rv.scopeNearby", { r: sr.search.radius_m }),
-          p: (sr.search.places || []).length })) : "") +
-        (srGoogle && sr.search.places.length ? prow(t("r.rvPlaces"), sr.search.places.map(function (p) {
-          return esc(p.name) + (p.rating != null ? " ★" + p.rating + (p.user_rating_count != null ? "(" + p.user_rating_count + ")" : "") : "");
-        }).join("、")) : "") +
+        prow(t("r.rvTarget"), esc(sr.place || "—")) +
         prow(t("r.rvCount"), pnum(sr.review_count, t("r.uRv"))) +
         (sr.avg_rating != null ? prow(t("r.rvAvg"), sr.avg_rating + " ★(" + sr.rated_count + ")") : "") +
         (sr.aspect_mentions && sr.aspect_mentions.length ? prow(t("r.rvAspects"), sr.aspect_mentions.map(function (a) {
@@ -2605,7 +2502,7 @@
           sr.sample_reviews.map(function (s) { return "<li>" + esc(s) + "</li>"; }).join("") + "</ul>";
       }
       if (sr.ai_summary) html += "<div>" + renderReport(sr.ai_summary) + "</div>";
-      html += "<p class='src'>" + t("r.rvNote") + (srGoogle ? " " + t("rv.gpAttr") : "") + "</p>";
+      html += "<p class='src'>" + t("r.rvNote") + "</p>";
     }
 
     var uc = lastAnalysis.user_comments;
