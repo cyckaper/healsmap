@@ -1821,6 +1821,8 @@
   // =========================================================
   var rvRegionEl = document.getElementById("rv-region");
   var rvGmapsBtn = document.getElementById("rv-gmaps");
+  var rvTemplateBtn = document.getElementById("rv-template");
+  var rvGuideEl = document.getElementById("rv-guide");
   var rvNameEl = document.getElementById("rv-name");
   var rvTextEl = document.getElementById("rv-text");
   var rvFileEl = document.getElementById("rv-file");
@@ -1863,6 +1865,27 @@
       q = f.lat.toFixed(6) + "," + f.lng.toFixed(6);
     }
     window.open("https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(q), "_blank", "noopener");
+  });
+
+  // 下載評論範本(CSV,含 UTF-8 BOM 讓 Excel 正確顯示中文);「範例:」開頭的列上傳時會自動略過
+  rvTemplateBtn.addEventListener("click", function () {
+    var en = window.i18nLang && window.i18nLang() === "en";
+    var rows = en
+      ? ["review,rating",
+         "\"Example: lots of shade, cool to walk in even in summer (example row - you can leave or delete it)\",5",
+         "\"Example: too dark at night, felt unsafe walking here (example row - you can leave or delete it)\",2"]
+      : ["評論,評分",
+         "\"範例:樹蔭很多,夏天走在裡面也很涼爽(此列為範例,可保留或刪除)\",5",
+         "\"範例:晚上燈光太暗,走起來有點不安全(此列為範例,可保留或刪除)\",2"];
+    try {
+      var blob = new Blob(["\ufeff" + rows.join("\r\n") + "\r\n"], { type: "text/csv;charset=utf-8" });
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "reviews-template.csv"; // ASCII 檔名:部分瀏覽器 / 系統對非 ASCII 的 download 檔名會退回 "download"
+      document.body.appendChild(a); a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); if (a.parentNode) a.parentNode.removeChild(a); }, 500);
+      rvNotice(t("rv.templateDone"));
+    } catch (e) { /* 舊瀏覽器無 Blob 下載:略過 */ }
   });
 
   function reviewsForAnalysis() {
@@ -1944,6 +1967,7 @@
   function runReviewAnalysis(reviews, origin) {
     if (!reviews.length) { rvNotice(t("rv.none")); return; }
     rvState = { reviews: reviews, stats: RA().analyze(reviews), origin: origin, aiText: null };
+    if (rvGuideEl) rvGuideEl.open = false; // 已成功分析:收合操作指引,讓結果更醒目(可再點開)
     rvAiOutputEl.innerHTML = ""; // 資料已換,舊的 AI 摘要作廢
     renderReviewStats();
     rvActionsEl.style.display = "";
