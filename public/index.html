@@ -10,7 +10,7 @@
   <!-- Leaflet.draw -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
 
-  <link rel="stylesheet" href="./css/style.css?v=5g" />
+  <link rel="stylesheet" href="./css/style.css?v=5h" />
 </head>
 <body>
   <div id="app">
@@ -99,6 +99,21 @@
         <p class="hint" id="green-source"></p>
       </section>
 
+      <!-- NDVI 植群分析 (Sentinel-2 衛星影像) -->
+      <section class="panel">
+        <h2 data-i18n="ndvi.h">NDVI 植群分析</h2>
+        <details class="help-box"><summary data-i18n="help.t">ⓘ 說明與計算方式</summary><div class="help-body" data-i18n="help.ndvi" data-i18n-html></div></details>
+        <button id="ndvi-btn" class="tool-btn" type="button" data-i18n="ndvi.btn">分析 NDVI 植群(衛星影像)</button>
+        <p class="info-region" id="ndvi-region" data-i18n="ndvi.hint">先放標記或畫基地,再按「分析 NDVI 植群」:以 Sentinel-2 衛星影像(10 m)計算植生指標。</p>
+        <dl class="indicators" id="ndvi-indicators"></dl>
+        <div id="ndvi-map-ctl" class="ndvi-map-ctl" style="display:none">
+          <label class="switch-row"><input type="checkbox" id="ndvi-layer" checked /> <span data-i18n="ndvi.layer">在地圖顯示 NDVI 分布</span></label>
+          <div class="ndvi-legend" id="ndvi-legend"></div>
+          <p class="hint ndvi-probe" id="ndvi-probe" data-i18n="ndvi.probeHint">點地圖上的分布圖可查該像元 NDVI。</p>
+        </div>
+        <p class="hint" id="ndvi-source"></p>
+      </section>
+
       <!-- 開放空間服務水準 (Open Space Service Level) -->
       <section class="panel">
         <h2 data-i18n="ossl.h">開放空間服務水準</h2>
@@ -152,6 +167,29 @@
         <p class="info-region" id="biodiv-region" data-i18n="biodiv.hint">先放標記或畫基地,再按「查詢周邊物種紀錄」。</p>
         <dl class="indicators" id="biodiv-indicators"></dl>
         <p class="hint" id="biodiv-source"></p>
+      </section>
+
+      <!-- 在地評價 · 評論分析(Google 地圖評論等,使用者自行提供文字) -->
+      <section class="panel">
+        <h2 data-i18n="rv.h">在地評價 · 評論分析</h2>
+        <details class="help-box"><summary data-i18n="help.t">ⓘ 說明與計算方式</summary><div class="help-body" data-i18n="help.rv" data-i18n-html></div></details>
+        <p class="info-region" id="rv-region" data-i18n="rv.hint">分析基地的 Google 地圖評論(或 PTT、Dcard、問卷)文字:統計評分、關鍵詞與景觀健康面向,並可交給 AI 歸納主題與情緒。</p>
+        <button id="rv-gmaps" class="tool-btn rv-gmaps" type="button" data-i18n="rv.gmaps">↗ 在 Google 地圖開啟基地位置(查看評論)</button>
+        <input id="rv-name" class="rv-input" type="text" maxlength="80" placeholder="評論對象(例:大安森林公園)" data-i18n-ph="rv.namePh" />
+        <textarea id="rv-text" class="rv-text" rows="6" placeholder="貼上評論文字(可直接從 Google 地圖評論列表複製貼上;每則以空行分隔)" data-i18n-ph="rv.textPh"></textarea>
+        <input type="file" id="rv-file" accept=".xlsx,.xls,.csv,.txt" style="display:none" />
+        <div class="btn-row">
+          <button id="rv-analyze" class="tool-btn" type="button" data-i18n="rv.analyze">分析評論</button>
+          <button id="rv-upload" class="tool-btn" type="button" data-i18n="rv.upload">上傳檔案</button>
+          <button id="rv-clear" class="tool-btn danger" type="button" data-i18n="rv.clear">清除</button>
+        </div>
+        <dl class="indicators" id="rv-indicators"></dl>
+        <div id="rv-summary"></div>
+        <div class="btn-group" id="rv-actions" style="display:none">
+          <button id="rv-ai" class="tool-btn" type="button" data-i18n="rv.aiBtn">AI 分析評論主題與情緒</button>
+        </div>
+        <div id="rv-ai-output"></div>
+        <p class="hint" id="rv-source"></p>
       </section>
 
       <!-- 使用者意見圖層 (User Comments) -->
@@ -218,6 +256,7 @@
           <li data-i18n="credits.moenv">空氣品質(AQI):環境部環境資料開放平臺</li>
           <li data-i18n="credits.nominatim">地名搜尋:OpenStreetMap Nominatim</li>
           <li data-i18n="credits.inat">生物多樣性:iNaturalist(CC 觀測資料)</li>
+          <li data-i18n="credits.s2">NDVI:含經修改之 Copernicus Sentinel 資料(Sentinel-2 L2A,ESA),經 AWS Open Data 與 Element 84 Earth Search 取得</li>
           <li data-i18n="credits.ai">AI 解讀:Anthropic Claude</li>
         </ul>
         <p class="disclaimer" data-i18n="credits.disclaimer">
@@ -245,9 +284,11 @@
   <!-- Marked (Markdown 渲染 AI 報告) -->
   <script src="https://unpkg.com/marked@12.0.2/marked.min.js"></script>
 
-  <script src="./js/i18n.js?v=5g"></script>
-  <script src="./js/openspace-service-level.js?v=5g"></script>
-  <script src="./js/comments-layer.js?v=5g"></script>
-  <script src="./js/app.js?v=5g"></script>
+  <script src="./js/i18n.js?v=5h"></script>
+  <script src="./js/openspace-service-level.js?v=5h"></script>
+  <script src="./js/comments-layer.js?v=5h"></script>
+  <script src="./js/ndvi-analysis.js?v=5h"></script>
+  <script src="./js/review-analysis.js?v=5h"></script>
+  <script src="./js/app.js?v=5h"></script>
 </body>
 </html>
