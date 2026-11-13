@@ -600,16 +600,30 @@
 
     // 在地評價 · 評論分析
     "rv.h": { zh: "在地評價 · 評論分析", en: "Local Reviews · Review Analysis" },
-    "rv.hint": { zh: "分析基地的 Google 地圖評論(或 PTT、Dcard、問卷)文字:統計評分、關鍵詞與景觀健康面向,並可交給 AI 歸納主題與情緒。", en: "Analyze review text for the site (Google Maps reviews, forums, surveys): ratings, keywords and landscape-health aspects, plus an optional AI theme & sentiment summary." },
-    "rv.gmaps": { zh: "↗ 在 Google 地圖開啟基地位置(查看評論)", en: "↗ Open the site in Google Maps (read reviews)" },
-    "rv.namePh": { zh: "評論對象(例:大安森林公園)", en: "Reviewed place (e.g. Daan Forest Park)" },
-    "rv.textPh": { zh: "貼上評論文字(可直接從 Google 地圖評論列表複製貼上;每則以空行分隔)", en: "Paste review text (you can copy a Google Maps review list as-is; separate other reviews with blank lines)" },
-    "rv.analyze": { zh: "分析評論", en: "Analyze" },
+    "rv.hint": { zh: "抓取基地周邊(或指定地點)的 Google 地圖評論,或貼上 / 上傳其他評論;統計評分與景觀健康面向,並由 AI 找出「環境如何影響使用者」的評論。", en: "Fetch Google Maps reviews around the site (or for a named place), or paste / upload other reviews; get ratings and landscape-health aspects, and let AI find how the environment affects users." },
+    "rv.fetch": { zh: "⤓ 抓取 Google 評論(基地周邊或指定地點)", en: "⤓ Fetch Google reviews (around the site or a named place)" },
+    "rv.fetching": { zh: "向 Google 地圖抓取評論中…", en: "Fetching reviews from Google Maps…" },
+    "rv.fetchNone": { zh: "基地周邊查無戶外 / 公共場所的 Google 地點;可填入地點名稱再抓取,或擴大基地範圍。", en: "No outdoor / public places found around the site; enter a place name or enlarge the site and try again." },
+    "rv.fetchNoText": { zh: "找到 {p} 個地點,但沒有含文字的評論。", en: "Found {p} places but no reviews with text." },
+    "rv.fetchErr": { zh: "Google 評論抓取失敗:", en: "Failed to fetch Google reviews: " },
+    "rv.fetchTimeout": { zh: "連線逾時,請稍後再試。", en: "request timed out; please try again." },
+    "rv.targetGoogle": { zh: "Google 地圖評論", en: "Google Maps reviews" },
+    "rv.fmtGoogleApi": { zh: "<br><span class='u'>來源:Google Maps · {scope} · {p} 個地點(每地點最多 5 則,由 Google 依相關度挑選)</span>", en: "<br><span class='u'>Source: Google Maps · {scope} · {p} places (up to 5 reviews each, chosen by Google for relevance)</span>" },
+    "rv.scopeNearby": { zh: "基地周邊 {r} m 的戶外 / 公共場所", en: "outdoor / public places within {r} m" },
+    "rv.scopeText": { zh: "名稱搜尋「{q}」", en: "name search “{q}”" },
+    "rv.gpTitle": { zh: "Google 評論來源地點", en: "Places the Google reviews came from" },
+    "rv.gpFetched": { zh: "取得 {n} 則", en: "{n} fetched" },
+    "rv.gpAll": { zh: "顯示全部 {n} 則評論(含作者署名)", en: "Show all {n} reviews (with author attribution)" },
+    "rv.gpTranslated": { zh: "Google 翻譯", en: "translated by Google" },
+    "rv.gpAttr": { zh: "資料來源:Google Maps;評論著作權屬原作者。抓取的評論原文不寫入歷史紀錄或匯出檔,只保存統計與 AI 分析。", en: "Source: Google Maps; reviews belong to their authors. Fetched review text is not saved to history or exports—only statistics and the AI analysis are." },
+    "rv.namePh": { zh: "地點名稱(選填:填了就抓該地點的評論,空白則抓基地周邊)", en: "Place name (optional: fetch that place; leave blank for places around the site)" },
+    "rv.textPh": { zh: "或貼上其他評論文字(Google 地圖評論列表、PTT、問卷…;每則以空行分隔)", en: "Or paste other review text (a Google Maps review list, forums, surveys…; separate reviews with blank lines)" },
+    "rv.analyze": { zh: "分析貼上的評論", en: "Analyze pasted" },
     "rv.upload": { zh: "上傳檔案", en: "Upload file" },
     "rv.clear": { zh: "清除", en: "Clear" },
-    "rv.aiBtn": { zh: "AI 分析評論主題與情緒", en: "AI: themes & sentiment" },
-    "rv.aiLoading": { zh: "AI 分析評論中…", en: "AI analyzing reviews…" },
-    "rv.aiTitle": { zh: "② AI 主題與情緒分析(送 Claude 分析)", en: "② AI Themes & Sentiment (analyzed by Claude)" },
+    "rv.aiBtn": { zh: "AI 分析:環境如何影響使用者", en: "AI: how the environment affects users" },
+    "rv.aiLoading": { zh: "AI 分析環境與使用者的關係中…", en: "AI analyzing environment–user effects…" },
+    "rv.aiTitle": { zh: "② AI 環境—使用者影響分析(送 Claude 分析)", en: "② AI Environment–User Effects (analyzed by Claude)" },
     "rv.localTitle": { zh: "① 本地統計(瀏覽器內計算)", en: "① Local stats (computed in your browser)" },
     "rv.empty": { zh: "請先貼上評論文字或上傳檔案。", en: "Paste review text or upload a file first." },
     "rv.none": { zh: "沒有辨識出評論內容;請確認每則評論以空行分隔。", en: "No reviews recognized; please separate reviews with blank lines." },
@@ -649,8 +663,8 @@
     "rv.a.wildlife": { zh: "生態·動物", en: "Wildlife" },
     "rv.a.pets": { zh: "寵物", en: "Pets" },
     "help.rv": {
-      zh: "分析<b>使用者自行提供</b>的評論文字(Google 地圖評論、PTT、Dcard、問卷或訪談皆可):<br>· <b>在 Google 地圖開啟</b>:以標記 / 基地中心開啟 Google 地圖(有填「評論對象」時改以名稱搜尋),方便閱讀並摘錄評論<br>· <b>貼上</b>:可把 Google 地圖評論列表整段複製貼上,系統自動辨識並略去作者名稱、「在地嚮導 · N 則評論」、相對時間、按鈕字樣與業主回應;其他文字以空行分隔每則(整段沒有空行時每行一則)。行首若有「★★★★☆」「4/5」「4 顆星」會記為星等<br>· <b>上傳</b>:CSV / Excel(需含評論文字欄,可含評分欄)或 TXT<br><b>本地統計</b>:則數、平均評分與星等分布(有星等時)、<b>景觀 · 健康面向</b>被提及的則數(綠意、遮蔭、炎熱、放鬆療癒、步道運動、兒童親子、座椅、廁所、整潔、維護、安全照明、無障礙、交通停車、聲環境、人潮、蚊蟲、景觀美感、生態、寵物;關鍵詞比對,不分正負)與關鍵詞詞頻。<br><b>AI 分析</b>:把評論(最多 150 則)送 Claude 歸納整體評價、正面主題、痛點與對景觀規劃設計的意涵。<br>⚠ 評論為自發性、非隨機樣本,不代表全體使用者。為遵守 Google Maps Platform 條款(不得與非 Google 地圖並用 Places 內容、不得複製保存使用者評論),本工具<b>不自動擷取</b> Google 評論;請自行摘錄研究所需內容、遵守各平台規範,並勿貼上個人資料。",
-      en: "Analyzes review text <b>that you supply</b> (Google Maps reviews, forums, surveys or interviews):<br>· <b>Open in Google Maps</b>: opens Google Maps at the marker / site centre (or searches the “reviewed place” name) so you can read and excerpt reviews<br>· <b>Paste</b>: a Google Maps review list can be pasted as-is—author names, “Local Guide · N reviews”, relative dates, button labels and owner replies are removed automatically; other text is split on blank lines (or one review per line). A leading “★★★★☆”, “4/5” or “4 stars” is read as the rating<br>· <b>Upload</b>: CSV / Excel (with a review-text column, optional rating column) or TXT<br><b>Local stats</b>: count, average rating and distribution (when ratings exist), how many reviews mention each <b>landscape & health aspect</b> (keyword matching, not sentiment) and keyword frequency.<br><b>AI analysis</b>: sends up to 150 reviews to Claude for overall sentiment, positive themes, pain points and design implications.<br>⚠ Reviews are a self-selected sample, not representative of all users. To comply with the Google Maps Platform Terms (no Places content with a non-Google map; no copying/saving user reviews), this tool <b>does not fetch</b> Google reviews automatically—excerpt what your study needs, follow each platform’s rules and do not paste personal data."
+      zh: "<b>「抓取 Google 評論」</b>:經本站後端以 Google 官方 <b>Places API (New)</b> 取得評論(需在 Netlify 設定 GOOGLE_MAPS_API_KEY):<br>· 地點名稱<b>空白</b>:以基地為圓心(點模式 500 m;面模式為範圍中心到最遠頂點的距離)搜尋公園、步道、廣場、遊戲場、景點、運動場館等戶外 / 公共場所,依熱門度取最多 <b>20 個地點</b><br>· <b>填了名稱</b>:以名稱搜尋基地附近最相符的地點(最多 5 個)<br>· 每個地點最多 <b>5 則</b>評論,由 Google 依相關度挑選,無法取得全部評論<br>也可<b>貼上 / 上傳</b>其他評論(Google 地圖評論列表、PTT、問卷;CSV / Excel / TXT)。<br><b>本地統計</b>:則數、星等分布、19 個景觀 · 健康面向被提及則數(關鍵詞比對,不分正負)與關鍵詞。<br><b>AI 分析:環境如何影響使用者</b>:Claude 從評論中找出提到環境要素(綠蔭、炎熱、水景、聲音、氣味、清潔、設施、步道、照明、人潮、蚊蟲、景觀…)且描述其對使用者影響(舒適、情緒與壓力恢復、安全感、活動行為、社交、可及性)的內容,整理成「環境要素 → 影響 → 代表評論 → 設計意涵」。<br>⚠ 評論為自發性、非隨機樣本,不代表全體使用者。Google Maps Platform 條款對 Places 內容與非 Google 地圖並用、保存評論及以其產生新內容(含 AI 分析)設有限制,使用前請自行評估;本站不在地圖上標示評論地點,評論原文亦不寫入歷史紀錄或匯出檔。",
+      en: "<b>Fetch Google reviews</b>: this site’s backend calls Google’s official <b>Places API (New)</b> (requires GOOGLE_MAPS_API_KEY on Netlify):<br>· <b>No place name</b>: searches outdoor / public places (parks, trails, plazas, playgrounds, attractions, sports venues…) in a circle around the site (500 m in point mode; centre-to-farthest-vertex in site mode), up to <b>20 places</b> by popularity<br>· <b>With a name</b>: finds the best-matching places near the site (up to 5)<br>· Up to <b>5 reviews per place</b>, chosen by Google for relevance—the API cannot return all reviews<br>You can also <b>paste / upload</b> other reviews (a Google Maps review list, forums, surveys; CSV / Excel / TXT).<br><b>Local stats</b>: count, rating distribution, how many reviews mention each of 19 landscape-health aspects (keyword matching, not sentiment) and keywords.<br><b>AI: how the environment affects users</b>: Claude extracts reviews that mention an environmental element (shade, heat, water, sound, smell, cleanliness, facilities, paths, lighting, crowding, mosquitoes, scenery…) and describe its effect on users (comfort, mood and stress recovery, sense of safety, activity, social use, accessibility), summarized as “element → effect → example → design implication”.<br>⚠ Reviews are a self-selected sample, not representative of all users. The Google Maps Platform Terms restrict using Places content with non-Google maps, storing reviews and creating new content from them (including AI analysis); assess this before use. This site does not plot review places on the map and does not save review text to history or exports."
     },
     "r.hReviews": { zh: "在地評價 · 評論分析", en: "Local Reviews · Review Analysis" },
     "r.rvTarget": { zh: "評論對象", en: "Reviewed place" },
@@ -660,7 +674,10 @@
     "r.rvTop": { zh: "最常見關鍵詞", en: "Top keywords" },
     "r.rvSamples": { zh: "代表性評論:", en: "Representative reviews:" },
     "r.uRv": { zh: " 則", en: "" },
-    "r.rvNote": { zh: "評論為使用者自行提供之自發性樣本,不代表全體使用者。", en: "Reviews were supplied by the user and are a self-selected sample, not representative of all users." }
+    "r.rvNote": { zh: "評論為自發性樣本,不代表全體使用者。", en: "Reviews are a self-selected sample, not representative of all users." },
+    "r.rvSource": { zh: "評論來源", en: "Review source" },
+    "r.rvSrcGoogle": { zh: "Google Maps(Places API)· {scope} · {p} 個地點", en: "Google Maps (Places API) · {scope} · {p} places" },
+    "r.rvPlaces": { zh: "來源地點(評分 / 評論數)", en: "Source places (rating / review count)" },
   };
 
   // 帶參數的字串:t("key", {r: 500})

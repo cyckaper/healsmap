@@ -55,13 +55,24 @@
 - **地圖**:10 m 像元分布圖(重投影至 Web Mercator),點圖可查單一像元值;報告匯出附分布圖
 - 反射率換算:`sentinel-cogs` 的像元值已扣除 ESA 的 +1000 偏移(STAC `earthsearch:boa_offset_applied: true`),**不可**再套 STAC `raster:bands` 的 offset −0.1;另以 SCL 植生像元紅光中位數做經驗檢核
 
-### 在地評價 · 評論分析(Google 地圖評論等)
-分析**使用者自行提供**的評論文字:
-- 「在 Google 地圖開啟基地位置」(Maps URLs,免金鑰)方便閱讀、摘錄評論
-- 貼上:可把 Google 地圖評論列表整段貼上,自動略去作者名稱、「在地嚮導 · N 則評論」、相對時間、按鈕字樣與業主回應;其他文字以空行分隔;行首「★★★★☆」「4/5」「4 顆星」記為星等。亦可上傳 CSV / Excel / TXT
-- 本地統計:則數、平均評分與星等分布、19 個**景觀 · 健康面向**被提及則數(遮蔭、炎熱、綠意、放鬆療癒、步道運動、兒童、座椅、廁所、整潔、維護、安全照明、無障礙、交通停車、聲環境、人潮、蚊蟲、景觀、生態、寵物)、關鍵詞
-- 「AI 分析評論主題與情緒」:送 `/api/analyze`(`mode: reviews_analysis`)歸納整體評價、受肯定面向、痛點與對規劃設計的意涵(最多 150 則 / 約 3 萬字)
-- **不自動擷取 Google 評論**:Google Maps Platform 條款 §3.2.3(e) 禁止在非 Google 地圖上或旁使用 Places 內容(本站底圖為 NLSC)、§3.2.3(a)(iii) 禁止複製保存使用者評論;唯一可與非 Google 地圖並用的是 Places UI Kit(Service Specific Terms §15.1),但其內容不可擷取分析
+### 在地評價 · 評論分析(Google 地圖評論)
+- **抓取 Google 評論**:前端呼叫後端 `/api/reviews`(`netlify/functions/reviews.mjs`),以 Google 官方 **Places API (New)** 取得評論,金鑰存於 Netlify 環境變數 `GOOGLE_MAPS_API_KEY`
+  - 地點名稱空白:Nearby Search,以基地為圓心(點模式 500 m;面模式為範圍中心到最遠頂點的距離,上限 5 km)搜尋公園、步道、廣場、遊戲場、景點、運動場館等戶外 / 公共場所,依熱門度取最多 **20 個地點**
+  - 填了名稱:Text Search,以基地為中心偏好搜尋該名稱,取最多 5 個地點
+  - **每個地點最多 5 則評論**(Google 依相關度挑選),API 無法取得全部評論
+  - 只接受本站網域(`*.healsdesign.org`、`*--healsmap.netlify.app`)的請求;回應不快取
+- 也可**貼上 / 上傳**其他評論:Google 地圖評論列表整段貼上會自動略去作者名稱、在地嚮導資訊、相對時間、按鈕字樣與業主回應;亦支援 PTT / 問卷文字與 CSV / Excel / TXT
+- 本地統計:則數、星等分布、19 個**景觀 · 健康面向**被提及則數、關鍵詞
+- **AI 分析:環境如何影響使用者**(`/api/analyze` 的 `reviews_analysis` 模式):Claude 找出提到環境要素(綠蔭、炎熱、水景、聲音、氣味、清潔、設施、步道、照明、人潮、蚊蟲、景觀…)且描述其對使用者影響(舒適、情緒與壓力恢復、安全感、活動行為、社交、可及性)的評論,整理成「環境要素 → 影響 → 代表評論 → 設計意涵」表格
+- 抓回的評論附作者署名與「Google Maps」標示,只在本次頁面顯示,不畫在地圖上,原文也不寫入歷史紀錄或匯出檔(只保存統計與 AI 分析)
+
+**啟用步驟**(Google Cloud Console):
+1. 建立專案並綁定帳單帳戶,啟用 **Places API (New)**
+2. 建立 API 金鑰,在「API 限制」只勾 Places API (New)(後端金鑰,不需設 HTTP 參照網址限制)
+3. 建議在 Places API 的「配額」設每日上限(例如 200 次 / 日),並在帳單設預算警示
+4. Netlify → Site configuration → Environment variables:新增 `GOOGLE_MAPS_API_KEY` → 重新部署
+
+> ⚠️ Google Maps Platform 條款對 Places 內容與非 Google 地圖並用(§3.2.3(e))、複製保存評論(§3.2.3(a)(iii))、以 Google Maps 內容產生新內容(§3.2.3(c),AI 分析即屬之)設有限制;本站已盡量降低(不標示於地圖、不保存原文、附署名),但 AI 分析部分仍與條款有出入,金鑰可能遭 Google 停用,使用前請自行評估。
 
 ### 熱環境 · 健康研判
 樹冠代理(對 3-30-300 的 30% 樹冠目標)× 脆弱族群(高齡 + 幼年比例)→ 綜合**高溫脆弱度**(低/中/高)。屬研判,非實測。
@@ -127,6 +138,7 @@
 | **Netlify**(託管 + Functions) | 免費額度內 | 免費方案:每月 100 GB 流量、Functions 12.5 萬次呼叫/125 萬次·秒執行;超量才付費 | Netlify → Team → **Usage** / **Billing** |
 | **Anthropic API**(Claude) | **是,按用量** | 依 **token** 計費(輸入 + 輸出),`claude-haiku-4-5`:約 **US$1 / 百萬輸入 token**、**US$5 / 百萬輸出 token** | console.anthropic.com → **Usage** / **Billing**(可設用量上限與額度警示) |
 | NLSC / 地質所 / Overpass / Nominatim / Open-Meteo / iNaturalist | 免費 | 公開政府/開源服務,免金鑰 | — |
+| **Google Places API (New)**(抓取評論) | **是,按用量** | 含評論欄位的 Nearby / Text Search 屬 Enterprise + Atmosphere 等級,每月前 1,000 次免費,之後約 US$40 / 千次(以官方價目為準) | Google Cloud Console → **Billing** / **APIs & Services → Places API (New) → 配額** |
 | Element 84 Earth Search / AWS Open Data(Sentinel-2) | 免費 | 公開 STAC 目錄與 S3 公開資料集,免金鑰(流量由 AWS Open Data 計畫負擔) | — |
 | unpkg(SheetJS CDN) | 免費 | 公共 CDN | — |
 
@@ -176,6 +188,7 @@
 │       ├── villages.json         # 村里界線 + 人口指標
 │       └── meta.json             # 資料來源、統計期、對應率
 ├── netlify/functions/analyze.mjs # ★ 實際部署的後端:/api/analyze
+├── netlify/functions/reviews.mjs # /api/reviews:Places API (New) 抓取 Google 評論
 ├── functions/api/analyze.js      # (未使用,Cloudflare 格式備援)
 ├── scripts/build-data.mjs        # 界線 + 人口資料建置腳本
 ├── netlify.toml                  # Netlify 部署設定
@@ -203,7 +216,7 @@ npx serve public          # 或 python3 -m http.server -d public
 
 ### Netlify(主要,含 AI,掛自有網域 map.healsdesign.org)
 1. Add new site → Import an existing project → 選本 repo(`netlify.toml` 已含 build 設定)
-2. Site configuration → Environment variables:`ANTHROPIC_API_KEY` = Anthropic API 金鑰 → 重新部署
+2. Site configuration → Environment variables:`ANTHROPIC_API_KEY` = Anthropic API 金鑰;`GOOGLE_MAPS_API_KEY` = Google Maps Platform 金鑰(抓取 Google 評論用,選填)→ 重新部署
 3. 後端 `netlify/functions/analyze.mjs` 以 Functions 2.0 的 `config.path` 直接掛在 `/api/analyze`
 4. Domain management → Add a domain → `map.healsdesign.org`(DNS 已在 Netlify,SSL 自動)
 

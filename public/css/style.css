@@ -536,3 +536,10 @@ html, body {
 .rv-bar-b.star { background: #d8a657; }
 .rv-bar-n { color: var(--text-dim); font-size: 11px; margin-left: auto; white-space: nowrap; }
 .info-region .u { font-size: 11.5px; color: var(--text-dim); }
+.rv-places { margin: 2px 0 6px; padding-left: 18px; }
+.rv-places li { font-size: 12px; line-height: 1.55; margin-bottom: 2px; }
+.rv-places a, .rv-gp-all a { color: var(--accent-hover); }
+.rv-places .u, .rv-gp-all .u { color: var(--text-dim); font-size: 11px; }
+.rv-gp-all { margin: 4px 0; }
+.rv-gp-all > summary { cursor: pointer; font-size: 12px; color: var(--accent-hover); }
+.rv-gp-all .cm-samples li { color: var(--text); }

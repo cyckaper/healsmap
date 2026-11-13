@@ -10,7 +10,7 @@
   <!-- Leaflet.draw -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
 
-  <link rel="stylesheet" href="./css/style.css?v=5h" />
+  <link rel="stylesheet" href="./css/style.css?v=5i" />
 </head>
 <body>
   <div id="app">
@@ -173,20 +173,21 @@
       <section class="panel">
         <h2 data-i18n="rv.h">在地評價 · 評論分析</h2>
         <details class="help-box"><summary data-i18n="help.t">ⓘ 說明與計算方式</summary><div class="help-body" data-i18n="help.rv" data-i18n-html></div></details>
-        <p class="info-region" id="rv-region" data-i18n="rv.hint">分析基地的 Google 地圖評論(或 PTT、Dcard、問卷)文字:統計評分、關鍵詞與景觀健康面向,並可交給 AI 歸納主題與情緒。</p>
-        <button id="rv-gmaps" class="tool-btn rv-gmaps" type="button" data-i18n="rv.gmaps">↗ 在 Google 地圖開啟基地位置(查看評論)</button>
-        <input id="rv-name" class="rv-input" type="text" maxlength="80" placeholder="評論對象(例:大安森林公園)" data-i18n-ph="rv.namePh" />
-        <textarea id="rv-text" class="rv-text" rows="6" placeholder="貼上評論文字(可直接從 Google 地圖評論列表複製貼上;每則以空行分隔)" data-i18n-ph="rv.textPh"></textarea>
+        <p class="info-region" id="rv-region" data-i18n="rv.hint">抓取基地周邊(或指定地點)的 Google 地圖評論,或貼上 / 上傳其他評論;統計評分與景觀健康面向,並由 AI 找出「環境如何影響使用者」的評論。</p>
+        <input id="rv-name" class="rv-input" type="text" maxlength="80" placeholder="地點名稱(選填:填了就抓該地點的評論,空白則抓基地周邊)" data-i18n-ph="rv.namePh" />
+        <button id="rv-fetch" class="tool-btn rv-gmaps" type="button" data-i18n="rv.fetch">⤓ 抓取 Google 評論(基地周邊或指定地點)</button>
+        <textarea id="rv-text" class="rv-text" rows="4" placeholder="或貼上其他評論文字(Google 地圖評論列表、PTT、問卷…;每則以空行分隔)" data-i18n-ph="rv.textPh"></textarea>
         <input type="file" id="rv-file" accept=".xlsx,.xls,.csv,.txt" style="display:none" />
         <div class="btn-row">
-          <button id="rv-analyze" class="tool-btn" type="button" data-i18n="rv.analyze">分析評論</button>
+          <button id="rv-analyze" class="tool-btn" type="button" data-i18n="rv.analyze">分析貼上的評論</button>
           <button id="rv-upload" class="tool-btn" type="button" data-i18n="rv.upload">上傳檔案</button>
           <button id="rv-clear" class="tool-btn danger" type="button" data-i18n="rv.clear">清除</button>
         </div>
         <dl class="indicators" id="rv-indicators"></dl>
         <div id="rv-summary"></div>
+        <div id="rv-places"></div>
         <div class="btn-group" id="rv-actions" style="display:none">
-          <button id="rv-ai" class="tool-btn" type="button" data-i18n="rv.aiBtn">AI 分析評論主題與情緒</button>
+          <button id="rv-ai" class="tool-btn" type="button" data-i18n="rv.aiBtn">AI 分析:環境如何影響使用者</button>
         </div>
         <div id="rv-ai-output"></div>
         <p class="hint" id="rv-source"></p>
@@ -284,11 +285,11 @@
   <!-- Marked (Markdown 渲染 AI 報告) -->
   <script src="https://unpkg.com/marked@12.0.2/marked.min.js"></script>
 
-  <script src="./js/i18n.js?v=5h"></script>
-  <script src="./js/openspace-service-level.js?v=5h"></script>
-  <script src="./js/comments-layer.js?v=5h"></script>
-  <script src="./js/ndvi-analysis.js?v=5h"></script>
-  <script src="./js/review-analysis.js?v=5h"></script>
-  <script src="./js/app.js?v=5h"></script>
+  <script src="./js/i18n.js?v=5i"></script>
+  <script src="./js/openspace-service-level.js?v=5i"></script>
+  <script src="./js/comments-layer.js?v=5i"></script>
+  <script src="./js/ndvi-analysis.js?v=5i"></script>
+  <script src="./js/review-analysis.js?v=5i"></script>
+  <script src="./js/app.js?v=5i"></script>
 </body>
 </html>

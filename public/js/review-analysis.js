@@ -8,8 +8,8 @@
  * 全部在瀏覽器本機處理,不連線任何外部服務;只有使用者按「AI 分析」時,
  * 才由 app.js 把評論文字送後端 /api/analyze。
  *
- * 不自動擷取 Google 評論:Google Maps Platform 條款 §3.2.3(e) 禁止在非 Google 地圖
- * 上或旁使用 Places 內容、§3.2.3(a)(iii) 禁止複製保存使用者評論。
+ * 由 Places API 自動抓取的 Google 評論見 netlify/functions/reviews.mjs 與 app.js;
+ * 抓回的評論同樣交給本模組的 analyze() 做本地統計。
  *
  * 暴露 window.ReviewAnalysis:
  *   parseText(text) -> { reviews:[{text, rating}], format, dropped:{names, meta, owner} }
