@@ -28,7 +28,7 @@ const SYSTEM_PROMPT = `你是台灣的都市規劃與基地分析助理。請依
 8. 若提供 healing_green_intervention 欄位(療癒綠地介入需求指數),以其 index(0-100)、priority_level 與 dominant_factor(主導因子:green=綠地匱乏、vuln=脆弱族群、heat=熱壓力、access=可及性不足)研判此基地導入「療癒性綠地/療癒景觀」的優先程度,並針對主導因子提出對應的療癒景觀設計策略(如:面向高齡與幼童的療癒花園、林蔭降溫廊道、可及的鄰里口袋綠地、感官與復癒性植栽)。此為多因子加權之研判性指標,非實測健康數據,須標示為研判。
 9. 若提供 air_quality 欄位(環境部最近測站即時空氣品質),以其 aqi、status、pm25、main_pollutant 與測站距離(distance_km)說明基地周邊空氣品質現況,並結合綠地/植栽提出對應建議(如:臨路綠籬與喬木對微粒的攔截、避免在高污染時段的開放活動設計)。須標示為「最近測站」之即時參考(每小時更新),測站距基地有距離、非基地實測。
 10. 若提供 ndvi 欄位(Copernicus Sentinel-2 L2A 衛星影像、10 m 像元計算之 NDVI),以 scene_date、mean/median、veg_cover_pct_ndvi_ge_0_2(植被覆蓋率)、dense_veg_pct_ndvi_ge_0_6(高植生比例,可作喬木樹冠的粗略代理,對照 3-30-300 的 30% 樹冠目標)與 class_pct(分級面積比例)評估植群量與分布;並與 green 欄位的 OSM 綠覆率比較(OSM 多為下限估計,NDVI 另能涵蓋行道樹、私有庭園與零星植栽,兩者落差可點出未納入正式綠地的植栽)。須標示:單一日期影像(受季節、物候影響)、10 m 像元會混合地物、NDVI 反映植生量與活力而非樹冠覆蓋率;clear_sky_pct 低於 90% 時提醒部分像元受雲遮。heat.green_input 為 ndvi_dense_veg_pct 時,熱環境研判與 healing_green_intervention 的綠地匱乏因子是以 NDVI 高植生比例(樹冠代理)計算(heat.green_coverage_pct 即該值,heat.osm_green_coverage_pct 為 OSM 參考值);為 osm_green_coverage_pct 時則以 OSM 綠覆率(下限估計)計算,解讀時依實際來源描述。
-11. 若提供 site_reviews 欄位(使用者自行提供之評論文字的分析:review_count、avg_rating、aspect_mentions 為各景觀/健康面向被提及的則數、top_keywords、sample_reviews、ai_summary),將使用者觀點納入評估與規劃建議(正面要素保留強化、痛點優先改善,並扣回綠地、遮蔭、設施等數據);須標示評論為自發性、非隨機樣本,不代表全體使用者,aspect_mentions 只表示被提及、不分正負評;不要大量逐字引用評論,也不要提及任何評論者身分。
+11. 若提供 site_reviews 欄位(使用者提供之評論文字的分析:review_count、avg_rating、aspect_mentions 為各景觀/健康面向被提及的則數、top_keywords、ai_summary 為「環境如何影響使用者」的分析),將使用者觀點納入評估與規劃建議(正面環境要素保留強化、負面要素優先改善,並扣回綠地、遮蔭、設施等數據);須標示評論為自發性、非隨機樣本,不代表全體使用者,aspect_mentions 只表示被提及、不分正負評;不要大量逐字引用評論,也不要提及任何評論者身分。
 
 報告結構(用簡短段落與條列,務求精煉好讀):
 一、基地概述(位置、所在行政區、人口結構重點)
@@ -122,23 +122,30 @@ export default async (req) => {
       : (truncated
           ? ("提醒:本分析僅依使用者提供之 " + total + " 則評論中、依原順序的前 " + reviews.length + " 則(非抽樣);評論為自發性樣本,不代表全體使用者。")
           : ("提醒:本分析僅依使用者提供之 " + reviews.length + " 則評論;評論為自發性樣本,不代表全體使用者。"));
+    // 分析焦點:評論中「環境要素 → 對使用者的影響」(環境心理 / 健康地景觀點)
     systemPrompt = lang === "en"
-      ? ("You analyze user reviews of a place for landscape planning and healthy-environment design. The reviews (some prefixed with a [N★] rating) were supplied by the user. Write, in English, using Markdown H3 (###) headings and bullet lists:\n" +
-         "### Overall impression\n1-2 sentences on overall sentiment—describe the positive/neutral/negative balance qualitatively (\"most\", \"about half\", \"a few\"), no exact percentages; cite the average rating if a rating summary is given.\n" +
-         "### What people value\n2-4 bullets: short label, how common, and one short verbatim quote.\n" +
-         "### Pain points\n2-4 bullets in the same format; say so plainly if there are hardly any complaints.\n" +
-         "### Design implications\n3-4 specific, actionable recommendations tied to the reviews (e.g. shade and thermal comfort, planting and greenery, seating, toilets and cleaning/maintenance, walking and exercise, child- and senior-friendliness, accessibility, safety lighting, mosquitoes, crowd management, relaxation and restoration).\n" +
-         "Rules: use only the provided reviews and never invent content; quotes must be short verbatim excerpts (≤ 20 words) with no reviewer names or personal data; do not state the total number of reviews yourself; no H1/H2 title; about 250-400 words. End with EXACTLY this caveat line verbatim: " + caveat)
-      : ("你是景觀規劃與健康環境的使用者評論分析助理。以下是使用者提供、關於某基地或場所的評論(部分開頭有 [N★] 星等標記)。請以繁體中文、Markdown 小標(###)與條列整理:\n" +
-         "### 整體評價\n1-2 句說明整體情緒傾向:以「多數、約半數、少數」等定性方式描述正面、中性、負面的比例,不要給精確百分比;若有星等摘要可引用平均評分。\n" +
-         "### 受肯定的面向\n2-4 點:每點一個簡短標題、常見程度,並附 1 句評論原文中的代表性短引述。\n" +
-         "### 痛點與抱怨\n2-4 點,格式同上;若評論幾乎沒有負面內容就直說。\n" +
-         "### 對景觀規劃設計的意涵\n3-4 點具體、可執行的建議,須扣回評論內容(可涉及遮蔭與熱舒適、植栽與綠意、休憩座椅、廁所與清潔維護、步行與運動、兒童與高齡友善、無障礙、安全照明、蚊蟲、人潮管理、放鬆與療癒等)。\n" +
-         "規則:只能根據提供的評論,不可杜撰;引述須為評論原文中的短句(30 字以內),不要附作者名或任何個人資料;不要自行宣稱評論總則數;不要輸出 H1 / H2 大標題;全文約 350-500 字。結尾請「原文照抄」以下這句免責提醒:" + caveat);
+      ? ("You analyze reviews of places for landscape planning, environmental psychology and health-supportive landscape design. Task: find how the ENVIRONMENT affects USERS—reviews that mention an environmental element and describe its effect on people.\n" +
+         "Environmental elements include: shade and planting, heat and sun exposure, water features, sound and noise, air and smell, cleanliness and maintenance, seating and shelter, toilets, paths and paving, accessibility and level changes, lighting and night-time safety, crowding, mosquitoes and insects, scenery and views, animals and wildlife.\n" +
+         "Effect types include: physical comfort (heat, fatigue, thirst), mood and stress recovery (relaxation, restoration, irritation), sense of safety, activity and behaviour (walking, exercise, length of stay, avoiding certain times), social and family use, accessibility.\n" +
+         "Some reviews start with a [N★] rating tag. Write in English using Markdown:\n" +
+         "### Environment–user effects in brief\n2-3 sentences: which elements most often affect users, and whether the effects are mainly positive or negative.\n" +
+         "### Elements and effects\nA Markdown table with columns | Element | Effect on users | +/− | How often | Example |; 5-10 rows ordered by frequency; \"How often\" is many / some / few; the example is a short verbatim excerpt (≤ 20 words).\n" +
+         "### Reviews not about the environment\nOne sentence: rough share (most / about half / a few) and main topics (e.g. food, service, prices); do not expand.\n" +
+         "### Design implications\n3-4 specific, actionable recommendations tied to the table (keep and strengthen positive elements, fix negative ones).\n" +
+         "Rules: use only the provided reviews and never invent content; no reviewer names or personal data; do not state the total number of reviews yourself; no H1/H2 title; if no review concerns the environment, say so plainly; about 300-500 words. End with EXACTLY this caveat line verbatim: " + caveat)
+      : ("你是景觀規劃、環境心理與健康地景的評論分析助理。任務:從評論中找出「環境如何影響使用者」的內容——評論提到某個環境要素,並描述它對使用者的影響。\n" +
+         "環境要素例:綠蔭與植栽、炎熱與日曬、水景、聲音與噪音、空氣與氣味、清潔與維護、座椅與遮蔽設施、廁所、步道與鋪面、無障礙與高低差、照明與夜間安全、人潮與擁擠、蚊蟲、景觀與視野、動物與生態。\n" +
+         "影響類型例:生理舒適(熱、累、渴)、情緒與壓力恢復(放鬆、療癒、煩躁)、安全感、活動與使用行為(散步、運動、停留時間、避開某些時段)、社交與親子、可及性。\n" +
+         "部分評論開頭有 [N★] 星等標記。請以繁體中文、Markdown 輸出:\n" +
+         "### 環境—使用者影響摘要\n2-3 句:哪些環境要素最常影響使用者、以正向或負向為主。\n" +
+         "### 環境要素與影響\nMarkdown 表格,欄位為 | 環境要素 | 對使用者的影響 | 正/負 | 提及程度 | 代表評論 |;5-10 列,依提及程度排序;提及程度用「多 / 中 / 少」;代表評論為原文短句(30 字內)。\n" +
+         "### 與環境無關的評論\n1 句:約略比例(多數 / 約半數 / 少數)與主要內容(如餐飲、服務、價格),不展開。\n" +
+         "### 設計意涵\n3-4 點具體、可執行的建議,扣回上表(保留強化正向要素、改善負向要素)。\n" +
+         "規則:只能根據提供的評論,不可杜撰;不要附作者名或任何個人資料;不要自行宣稱評論總則數;不要輸出 H1 / H2 大標題;若沒有任何與環境相關的評論就直說;全文約 400-650 字。結尾請「原文照抄」以下這句免責提醒:" + caveat);
     const head = lang === "en"
-      ? ((place ? "Reviewed place: " + place + (region ? " (" + region + ")" : "") + "\n" : (region ? "Area: " + region + "\n" : "")) +
+      ? ((place ? "Place: " + place + (region ? " (" + region + ")" : "") + "\n" : (region ? "Area: " + region + "\n" : "")) +
          "Reviews supplied by the user (" + reviews.length + " items):\n\n")
-      : ((place ? "評論對象:" + place + (region ? "(" + region + ")" : "") + "\n" : (region ? "所在地區:" + region + "\n" : "")) +
+      : ((place ? "地點:" + place + (region ? "(" + region + ")" : "") + "\n" : (region ? "所在地區:" + region + "\n" : "")) +
          "以下為使用者提供的評論(共 " + reviews.length + " 則):\n\n");
     let extra = "";
     const rs = data.rating_summary;

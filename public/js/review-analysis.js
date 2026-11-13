@@ -225,9 +225,14 @@
     var rating = pick(columns.filter(function (c) { return c !== text; }), RATING_KEYS);
     return { text: text, rating: rating };
   }
+  // 範本中的示範列(「範例:」/「Example:」開頭)不納入分析
+  var RE_EXAMPLE = /^\s*(?:範例|example)\s*[::]/i;
+
   function fromRows(rows, cols) {
     if (!cols || !cols.text) return [];
-    return finalize(rows.map(function (r) {
+    return finalize(rows.filter(function (r) {
+      return !RE_EXAMPLE.test(String(r[cols.text] == null ? "" : r[cols.text]));
+    }).map(function (r) {
       var raw = cols.rating ? String(r[cols.rating] == null ? "" : r[cols.rating]) : "";
       var v = parseRating(raw);
       if (v == null && raw) { var n = parseFloat(raw.replace(/[^0-9.]/g, "")); v = n >= 1 && n <= 5 ? n : null; }
