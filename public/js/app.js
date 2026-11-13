@@ -710,10 +710,36 @@
     aqiSourceEl.textContent = "";
   }
 
-  // 熱環境/健康研判:綠覆率(對 3-30-300 的 30% 目標)× 脆弱族群(高齡+幼年)
-  function renderHeat(greenCoveragePct, props) {
+  // 熱環境與療癒綠地指數的「綠地」輸入(對照 3-30-300 的 30% 樹冠目標):
+  // 本基地有 NDVI 結果時用高植生比例(NDVI ≥ 0.6,樹冠代理);否則用 OSM 綠覆率(下限估計)。
+  // 不用 NDVI ≥ 0.2 的植被覆蓋率:它含草地與稀疏植生,一般街廓多已超過 30%,綠地缺口會失去鑑別力。
+  function heatGreenInput(osmPct) {
+    var nd = lastAnalysis && lastAnalysis.ndvi;
+    if (nd && nd.dense_veg_pct_ndvi_ge_0_6 != null) {
+      return { pct: nd.dense_veg_pct_ndvi_ge_0_6, source: "ndvi", nd: nd };
+    }
+    return { pct: osmPct, source: "osm", nd: null };
+  }
+
+  // 由綠地分析結果取 OSM 綠覆率(點模式為 500 m 服務圈、面模式為基地內;查無綠地時為 0)
+  function osmCoverageOf(a) {
+    var g = (a && a.green) || {};
+    var v = g.mode === "within_site" ? g.site_green_coverage_pct : g.green_coverage_pct;
+    return v != null ? v : 0;
+  }
+
+  // NDVI 晚於綠地分析完成時,以相同人口資料重算熱環境(連帶重算 HGIP 與自動保存)
+  function rerenderHeat() {
+    if (!lastAnalysis || !lastAnalysis.heat) return;
+    renderHeat(osmCoverageOf(lastAnalysis), lastAnalysis.population);
+  }
+
+  // 熱環境/健康研判:綠地(樹冠代理,對 3-30-300 的 30% 目標)× 脆弱族群(高齡+幼年)
+  function renderHeat(osmCoveragePct, props) {
     var elderly = props && props.elderly_share != null ? props.elderly_share : null;
     var child = props && props.child_share != null ? props.child_share : null;
+    var gi = heatGreenInput(osmCoveragePct);
+    var greenCoveragePct = gi.pct;
     var greenDeficit = Math.max(0, Math.min(1, (30 - greenCoveragePct) / 30)); // 0..1
     var vulnShare = elderly != null && child != null ? (elderly + child) / 100 : null;
     var vulnNorm = vulnShare != null ? Math.min(1, vulnShare / 0.4) : null; // 40% 視為高
@@ -724,17 +750,27 @@
 
     heatRegionEl.innerHTML = t("h.title", { c: color, lv: level });
     var html = "";
-    html += ind(t("h.coverage"), greenCoveragePct.toFixed(1), "%");
-    html += ind(t("h.target30"), (greenCoveragePct >= 30 ? t("g.met") : t("g.notMet")), "");
+    if (gi.source === "ndvi") {
+      html += ind(t("h.canopyNdvi"), greenCoveragePct.toFixed(1), "%");
+      html += ind(t("h.target30"), (greenCoveragePct >= 30 ? t("g.met") : t("g.notMet")), "");
+      html += ind(t("h.vegNdvi"), gi.nd.veg_cover_pct_ndvi_ge_0_2 != null ? gi.nd.veg_cover_pct_ndvi_ge_0_2.toFixed(1) : "—", "%");
+      html += ind(t("h.coverage"), osmCoveragePct.toFixed(1), "%"); // OSM 綠覆率僅列供參考
+    } else {
+      html += ind(t("h.coverage"), greenCoveragePct.toFixed(1), "%");
+      html += ind(t("h.target30"), (greenCoveragePct >= 30 ? t("g.met") : t("g.notMet")), "");
+    }
     html += ind(t("h.elderly"), elderly != null ? elderly.toFixed(1) : "—", "%");
     html += ind(t("h.child"), child != null ? child.toFixed(1) : "—", "%");
     heatIndEl.innerHTML = html;
 
-    heatSourceEl.innerHTML = t("h.note");
+    heatSourceEl.innerHTML = gi.source === "ndvi" ? t("h.noteNdvi", { d: gi.nd.scene_date || "—" }) : t("h.note");
     // 儲存原始 level 鍵供其他語言參考(英文/中文皆存可讀字)
     if (lastAnalysis) {
       lastAnalysis.heat = {
-        green_coverage_pct: +greenCoveragePct.toFixed(1),
+        green_input: gi.source === "ndvi" ? "ndvi_dense_veg_pct" : "osm_green_coverage_pct",
+        green_coverage_pct: +greenCoveragePct.toFixed(1), // 研判實際採用的綠地值(樹冠代理)
+        osm_green_coverage_pct: +osmCoveragePct.toFixed(1),
+        ndvi_veg_cover_pct: gi.source === "ndvi" ? gi.nd.veg_cover_pct_ndvi_ge_0_2 : null,
         meets_30pct_target: greenCoveragePct >= 30,
         elderly_share: elderly,
         child_share: child,
@@ -796,11 +832,13 @@
       html += ind(t(f.labelKey), pct + mark, "%");
     });
     hgipIndEl.innerHTML = html;
-    hgipSourceEl.innerHTML = t("hg.note", { f: t(top.labelKey) });
+    var greenFromNdvi = h.green_input === "ndvi_dense_veg_pct";
+    hgipSourceEl.innerHTML = t("hg.note", { f: t(top.labelKey) }) + (greenFromNdvi ? t("hg.noteNdvi") : "");
 
     lastAnalysis.healing_green_intervention = {
       index: index,
       priority_level: level,
+      green_source: greenFromNdvi ? "ndvi_dense_veg_pct" : "osm_green_coverage_pct",
       dominant_factor: top.key,
       factors: factors.map(function (f) {
         return { key: f.key, normalized: +f.v.toFixed(2), weight: f.w };
@@ -1404,6 +1442,7 @@
         loadClimate((bb[1] + bb[3]) / 2, (bb[0] + bb[2]) / 2);
         loadOSSL((bb[1] + bb[3]) / 2, (bb[0] + bb[2]) / 2);
         loadAQI((bb[1] + bb[3]) / 2, (bb[0] + bb[2]) / 2);
+        maybeAutoNdvi();
 
         greenSourceEl.innerHTML = t("g.noteSite");
       })
@@ -1459,6 +1498,7 @@
           loadClimate(lat, lng);
           loadOSSL(lat, lng);
           loadAQI(lat, lng);
+          maybeAutoNdvi();
           return;
         }
 
@@ -1555,6 +1595,7 @@
         loadClimate(lat, lng);
         loadOSSL(lat, lng);
         loadAQI(lat, lng);
+        maybeAutoNdvi();
 
         greenSourceEl.innerHTML = t("g.noteRadius");
       })
@@ -1579,7 +1620,7 @@
   var ndviLegendEl = document.getElementById("ndvi-legend");
   var ndviProbeEl = document.getElementById("ndvi-probe");
   var ndviLayer = L.layerGroup().addTo(map);
-  var ndviState = { run: 0, result: null, rev: -1, ctrl: null };
+  var ndviState = { run: 0, result: null, rev: -1, ctrl: null, activeRev: -1 };
   var NDVI_TIMEOUT_MS = 90000;
   // 深色側欄上的文字用色(分級色塊本身較深,文字改用較亮的同色系)
   var NDVI_TEXT_COLOR = { dense: "#6cc070", moderate: "#a8d46f", sparse: "#d9c76a", bare: "#c9a477" };
@@ -1711,6 +1752,7 @@
     var run = ++ndviState.run, rev = siteRev;
     var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
     ndviState.ctrl = ctrl;
+    ndviState.activeRev = rev;
     var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, NDVI_TIMEOUT_MS) : null;
     if (ctrl) opts.signal = ctrl.signal;
     opts.onProgress = function (stage, info) {
@@ -1740,7 +1782,8 @@
       lastNdviRev = rev;
       if (lastAnalysis && lastAnalysisRev === rev) {
         lastAnalysis.ndvi = lastNdvi;
-        scheduleAutoSave();
+        // 熱環境 / 療癒綠地指數改以 NDVI 樹冠代理重算(其內 renderHGIP 會自動保存)
+        if (lastAnalysis.heat) rerenderHeat(); else scheduleAutoSave();
       }
     }).catch(function (err) {
       if (run !== ndviState.run) return;
@@ -1757,11 +1800,19 @@
       ndviSourceEl.textContent = code || (err && err.name === "AbortError") ? "" : String((err && err.message) || err);
     }).finally(function () {
       if (timer) clearTimeout(timer);
-      if (run === ndviState.run) { ndviBtn.disabled = false; ndviState.ctrl = null; }
+      if (run === ndviState.run) { ndviBtn.disabled = false; ndviState.ctrl = null; ndviState.activeRev = -1; }
     });
   }
 
   ndviBtn.addEventListener("click", analyzeNdvi);
+
+  // 「分析周邊綠地」時一併自動執行(同氣候 / 服務水準 / 空品);本基地已有結果或正在計算則略過
+  function maybeAutoNdvi() {
+    if (!NV()) return;
+    if (lastNdvi && lastNdviRev === siteRev) return;
+    if (ndviState.ctrl && ndviState.activeRev === siteRev) return;
+    analyzeNdvi();
+  }
 
   // =========================================================
   //  在地評價 · 評論分析(review-analysis 模組;分析使用者自行提供的評論文字)
@@ -2376,8 +2427,11 @@
         "</table>";
     }
 
+    var heatNdvi = h.green_input === "ndvi_dense_veg_pct"; // 舊紀錄無此欄 → 視為 OSM
     html += "<h2>" + t("r.hHeat") + "</h2><table class='summary'>" +
-      prow(t("r.covOSM"), pnum(h.green_coverage_pct, " %")) +
+      (heatNdvi
+        ? prow(t("h.canopyNdvi"), pnum(h.green_coverage_pct, " %")) + prow(t("r.covOSM"), pnum(h.osm_green_coverage_pct, " %"))
+        : prow(t("r.covOSM"), pnum(h.green_coverage_pct, " %"))) +
       prow(t("r.t30"), MET(h.meets_30pct_target)) +
       prow(t("r.vuln"), h.vulnerability_level || "—") +
       "</table>";
