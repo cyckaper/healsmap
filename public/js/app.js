@@ -2283,8 +2283,9 @@
       lawZoningAutoEl.textContent = parts.join(" · ");
       return;
     }
-    if (res.status === "unsupported") {
-      lawZoningAutoEl.innerHTML = esc(t("zon.unsupported", { c: res.county || t("zon.thisArea") })) +
+    if (res.status === "unsupported" || res.status === "restricted") {
+      lawZoningAutoEl.innerHTML = esc(t(res.status === "restricted" ? "zon.restricted" : "zon.unsupported",
+        { c: res.county || t("zon.thisArea") })) +
         "<a href='https://luz.nlma.gov.tw/web/' target='_blank' rel='noopener'>" + esc(t("zon.luz")) + "</a>";
       return;
     }
@@ -2322,7 +2323,7 @@
   // 送給法規檢索的使用分區資訊(官方圖資查詢結果;使用者改過欄位時一併註明)
   function zoningForLaw() {
     var z = lastZoning;
-    if (!z || lastZoningRev !== siteRev || z.status === "unsupported") return null;
+    if (!z || lastZoningRev !== siteRev || (z.status !== "ok" && z.status !== "none")) return null;
     return {
       status: z.status, verified: z.verified !== false,
       source: ((z.agency || "") + " " + (z.layer || "")).trim() + (z.data_date ? t("zon.dataDate", { d: z.data_date }) : ""),

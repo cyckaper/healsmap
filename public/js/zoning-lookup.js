@@ -58,13 +58,6 @@
       type: "static", base: "./zoning/ntpc/",
       verified: true
     },
-    "高雄市": {
-      // 民國 105 年版圖層(使用分區105,顯示欄位 NAME);伺服器擋海外連線未能實測欄位
-      agency: "高雄市政府", layer: "使用分區105(民國105年資料,可能未含其後變更)",
-      url: "https://pipegis3d.kcg.gov.tw/server/rest/services/BasicMap/%E5%9C%9F%E5%9C%B0%E4%BD%BF%E7%94%A8%E5%88%86%E5%8D%80/MapServer/1",
-      name: ["NAME"].concat(NAME_CANDIDATES), short: [], code: [], bcr: [], far: [], plan: [],
-      verified: false
-    },
     "苗栗縣": {
       agency: "苗栗縣政府", layer: "都市計畫使用分區",
       url: "https://ailand.miaoli.gov.tw/server/rest/services/Dynamic/Urban_Planning/MapServer/0",
@@ -97,7 +90,11 @@
         return r.json();
       })
       .then(function (j) {
-        if (j && j.error) throw new Error((j.error.message || "ArcGIS error") + (j.error.code ? " (" + j.error.code + ")" : ""));
+        if (j && j.error) {
+          var err = new Error((j.error.message || "ArcGIS error") + (j.error.code ? " (" + j.error.code + ")" : ""));
+          err.code = j.error.code;
+          throw err;
+        }
         return j;
       });
   }
@@ -242,7 +239,7 @@
   }
 
   /* opts: { county, lat, lng, polygon (GeoJSON Feature, 面模式), signal }
-   * result: { status: ok|none|unsupported|error, county, agency, layer, url, verified,
+   * result: { status: ok|none|unsupported|restricted|error, county, agency, layer, url, verified,
    *           mode: point|site, nearby, zones:[{name, share, area_m2, count, short, code, bcr, far, plan}],
    *           plans:[], partial, error, queried_at } */
   function lookup(opts) {
@@ -299,6 +296,8 @@
         nearby: !!r.nearby && r.zones.length > 0, partial: !!r.partial
       });
     }).catch(function (e) {
+      // 498 / 499:服務需權杖(只開放給該縣市自己的網站),不能也不應自動查詢
+      if (e && (e.code === 499 || e.code === 498)) return Object.assign(base, { status: "restricted" });
       return Object.assign(base, { status: "error",
         error: (e && e.name === "AbortError") ? "timeout" : String((e && e.message) || e) });
     }).finally(function () { if (timer) clearTimeout(timer); });
