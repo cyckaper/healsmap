@@ -156,6 +156,27 @@
     "hist.cmpName": { zh: "名稱", en: "Name" },
     "hist.cmpArea": { zh: "基地面積", en: "Site area" },
     "hist.cmpSaved": { zh: "保存時間", en: "Saved at" },
+    "hist.cmpCoord": { zh: "座標", en: "Coordinates" },
+    "hist.uDay": { zh: "天", en: "days" },
+    "hist.cmpPoint": { zh: "點位(周邊 {r} m)", en: "Point ({r} m radius)" },
+    "hist.cmpKey": { zh: "關鍵指標對照", en: "Key indicators" },
+    "hist.cmpDelta": { zh: "變化(新−舊)", en: "Change (new − old)" },
+    "hist.cmpNote": { zh: "依保存時間由舊到新排列;「變化」= 較新一筆 − 較舊一筆(僅 2 筆時顯示)。數值為各次保存當下的結果,同一地點不同時間可看出變化,不同地點則為並排對照。", en: "Sorted oldest to newest; “Change” = newer − older (shown for 2 records). Values are as saved at the time: the same site over time shows change, different sites are compared side by side." },
+    "hist.cmpDetail": { zh: "各面向詳細內容", en: "Details by section" },
+    "hist.cmpPrint": { zh: "列印 / 存成 PDF", en: "Print / Save as PDF" },
+    "hist.cmpCsv": { zh: "下載對照表(CSV)", en: "Download table (CSV)" },
+    "hist.m.osmGreen": { zh: "綠覆率(OSM,下限估計)", en: "Green coverage (OSM, lower bound)" },
+    "hist.m.parks500": { zh: "500 m 內公園數", en: "Parks within 500 m" },
+    "hist.m.parksSite": { zh: "基地內公園數", en: "Parks within site" },
+    "hist.m.ndviDate": { zh: "NDVI 影像日期", en: "NDVI scene date" },
+    "hist.m.ossl": { zh: "開放空間服務水準總分", en: "Open-space service score" },
+    "hist.m.heatDays": { zh: "年高溫日數(≥32°C)", en: "Hot days/yr (≥32°C)" },
+    "hist.m.heatLv": { zh: "高溫脆弱度", en: "Heat vulnerability" },
+    "hist.m.hgip": { zh: "療癒綠地介入需求指數", en: "Healing-green intervention index" },
+    "hist.m.hgipLv": { zh: "介入優先等級", en: "Intervention priority" },
+    "hist.m.species": { zh: "物種數(iNaturalist)", en: "Species (iNaturalist)" },
+    "hist.m.reviews": { zh: "評論則數", en: "Reviews" },
+    "hist.m.rating": { zh: "平均評分", en: "Average rating" },
 
     "help.t": { zh: "ⓘ 說明與計算方式", en: "ⓘ About & formulas" },
     "help.search": {
@@ -219,8 +240,8 @@
       en: "· <b>Generate AI report</b>: sends the panels' actual figures to the AI backend for a grounded interpretive report (token usage shown).<br>· <b>Export / print</b>: opens a clean page—use the browser's Print to save a PDF; the footer carries a plain-text <b>HEALS-BOUNDARY</b> marker so downstream tools can recover the site boundary from the PDF.<br>· <b>Send to Zoning & Circulation</b>: deep-links the drawn boundary ([lat,lng] vertices) to the downstream tool and syncs a cross-subdomain cookie; boundaries over 80 vertices are simplified. Disabled until a boundary is drawn."
     },
     "help.hist": {
-      zh: "每次分析完成後<b>自動保存</b>於此瀏覽器 localStorage(單一鍵 sas_analyses;上限 30 筆,超過汰換最舊;同一次分析各面板陸續完成時更新同一筆)。<br>· <b>載入</b>:還原地圖標記/範圍與各面板的文字快照(要最新數據請重新分析)<br>· <b>改名 / 刪除</b>:管理紀錄(刪除需確認)<br>· <b>比較</b>:勾選 2–3 筆開新視窗並排對照(頂端基本資料表+八面向逐項;窄螢幕 <820px 改上下堆疊)<br>· <b>匯出全部 / 匯入(JSON)</b>:備份與跨裝置還原(依 id 去重合併)<br>⚠ 紀錄只存在這台裝置的瀏覽器;私密瀏覽或清除網站資料會遺失,重要結果請匯出備份。",
-      en: "Each completed analysis is <b>auto-saved</b> to this browser's localStorage (key sas_analyses; max 30, oldest dropped; one record per analysis run, updated as panels finish).<br>· <b>Load</b> restores the map marker/boundary and text snapshots of every panel (re-run the analysis for fresh data)<br>· <b>Rename / Delete</b> manage records (delete asks for confirmation)<br>· <b>Compare</b>: check 2–3 records for a side-by-side window (stacks below 820px)<br>· <b>Export / Import (JSON)</b> back up and restore across devices (merged, de-duplicated by id)<br>Records live only in this browser—private browsing or clearing site data erases them; export to keep backups."
+      zh: "每次分析完成後<b>自動保存</b>於此瀏覽器 localStorage(單一鍵 sas_analyses;上限 30 筆,超過汰換最舊;同一次分析各面板陸續完成時更新同一筆)。<br>· <b>載入</b>:還原地圖標記/範圍與各面板的文字快照(要最新數據請重新分析)<br>· <b>改名 / 刪除</b>:管理紀錄(刪除需確認)<br>· <b>比較</b>:勾選 2–3 筆開新視窗,依保存時間由舊到新排列:頂端基本資料、<b>關鍵指標對照表</b>(人口、綠覆率、NDVI、服務水準、高溫日數、AQI、療癒綠地指數等;2 筆時另列「變化 = 新 − 舊」),之後各面向逐項並排;可列印 / 存成 PDF 或下載對照表 CSV(窄螢幕 <820px 改上下堆疊)。未執行的面向不列入<br>· <b>匯出全部 / 匯入(JSON)</b>:備份與跨裝置還原(依 id 去重合併)<br>⚠ 紀錄只存在這台裝置的瀏覽器;私密瀏覽或清除網站資料會遺失,重要結果請匯出備份。",
+      en: "Each completed analysis is <b>auto-saved</b> to this browser's localStorage (key sas_analyses; max 30, oldest dropped; one record per analysis run, updated as panels finish).<br>· <b>Load</b> restores the map marker/boundary and text snapshots of every panel (re-run the analysis for fresh data)<br>· <b>Rename / Delete</b> manage records (delete asks for confirmation)<br>· <b>Compare</b>: check 2–3 records for a window sorted oldest to newest: basic info, a <b>key-indicator table</b> (population, green coverage, NDVI, service score, hot days, AQI, healing-green index…; with 2 records a “Change = new − old” column), then each section side by side; print / save as PDF or download the table as CSV (stacks below 820px). Sections that were not run are omitted<br>· <b>Export / Import (JSON)</b> back up and restore across devices (merged, de-duplicated by id)<br>Records live only in this browser—private browsing or clearing site data erases them; export to keep backups."
     },
 
     "credits.h": { zh: "資料來源與版權", en: "Data Sources & Credits" },
@@ -711,6 +732,11 @@
   }
 
   window.t = t;
+  // 取某鍵的所有語言版本(歷史紀錄判斷「面板仍是提示文字」用,紀錄可能以任一語言保存)
+  window.i18nAll = function (key) {
+    var e = DICT[key];
+    return e ? [e.zh, e.en].filter(Boolean) : [];
+  };
   window.i18nLang = getLang;
   window.i18nSetLang = setLang;
   window.applyI18n = applyI18n;
