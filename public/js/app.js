@@ -874,6 +874,7 @@
         var aborted = err && err.name === "AbortError";
         climateRegionEl.textContent = aborted ? t("cl.timeout") : t("cl.offline");
         climateSourceEl.textContent = "";
+        if (lastAnalysis) scheduleAutoSave(); // 保存時若停在「載入中」,改存失敗訊息
       });
   }
 
@@ -1041,6 +1042,7 @@
         var detail = e && e.message ? e.message : String(e);
         aqiRegionEl.textContent = t("aqi.offline");
         aqiSourceEl.textContent = detail;
+        if (lastAnalysis) scheduleAutoSave();
       });
   }
 
@@ -1089,6 +1091,7 @@
       .catch(function () {
         osslRegionEl.textContent = t("ossl.offline");
         osslSourceEl.textContent = "";
+        if (lastAnalysis) scheduleAutoSave();
       });
   }
 
@@ -1798,6 +1801,8 @@
       ndviRegionEl.textContent = msg;
       // 非預期錯誤附上原始訊息以利診斷
       ndviSourceEl.textContent = code || (err && err.name === "AbortError") ? "" : String((err && err.message) || err);
+      // NDVI 常晚於其他面板結束:若已自動保存,把停在「查詢中」的 NDVI 面板改存為失敗訊息
+      if (lastAnalysis && lastAnalysisRev === rev) scheduleAutoSave();
     }).finally(function () {
       if (timer) clearTimeout(timer);
       if (run === ndviState.run) { ndviBtn.disabled = false; ndviState.ctrl = null; ndviState.activeRev = -1; }
@@ -2846,18 +2851,27 @@
   // =========================================================
   var HIST_KEY = "sas_analyses";
   var HIST_MAX = 30; // 上限筆數,超過丟最舊(localStorage 容量有限)
+  // hint:面板未執行時顯示的提示文字鍵;保存時若只有提示就存空字串,比較頁不列入
   var SECTION_DEFS = [
-    { key: "pop", zhKey: "pop.h", region: "info-region", body: "indicators" },
-    { key: "green", zhKey: "green.h", region: "green-region", body: "green-indicators" },
-    { key: "ndvi", zhKey: "ndvi.h", region: "ndvi-region", body: "ndvi-indicators" },
-    { key: "ossl", zhKey: "ossl.h", region: "ossl-region", body: "ossl-output" },
-    { key: "climate", zhKey: "climate.h", region: "climate-region", body: "climate-indicators" },
-    { key: "heat", zhKey: "heat.h", region: "heat-region", body: "heat-indicators" },
-    { key: "aqi", zhKey: "aqi.h", region: "aqi-region", body: "aqi-indicators" },
-    { key: "hgip", zhKey: "hgip.h", region: "hgip-region", body: "hgip-indicators" },
-    { key: "biodiv", zhKey: "biodiv.h", region: "biodiv-region", body: "biodiv-indicators" },
-    { key: "rv", zhKey: "rv.h", region: "rv-region", body: ["rv-indicators", "rv-summary", "rv-ai-output"] }
+    { key: "pop", zhKey: "pop.h", region: "info-region", body: "indicators", hint: "pop.tip" },
+    { key: "green", zhKey: "green.h", region: "green-region", body: "green-indicators", hint: "green.hint" },
+    { key: "ndvi", zhKey: "ndvi.h", region: "ndvi-region", body: "ndvi-indicators", hint: "ndvi.hint" },
+    { key: "ossl", zhKey: "ossl.h", region: "ossl-region", body: "ossl-output", hint: "ossl.hint" },
+    { key: "climate", zhKey: "climate.h", region: "climate-region", body: "climate-indicators", hint: "climate.hint" },
+    { key: "heat", zhKey: "heat.h", region: "heat-region", body: "heat-indicators", hint: "heat.hint" },
+    { key: "aqi", zhKey: "aqi.h", region: "aqi-region", body: "aqi-indicators", hint: "aqi.hint" },
+    { key: "hgip", zhKey: "hgip.h", region: "hgip-region", body: "hgip-indicators", hint: "hgip.hint" },
+    { key: "biodiv", zhKey: "biodiv.h", region: "biodiv-region", body: "biodiv-indicators", hint: "biodiv.hint" },
+    { key: "rv", zhKey: "rv.h", region: "rv-region", body: ["rv-indicators", "rv-summary", "rv-ai-output"], hint: "rv.hint" }
   ];
+  // 面板文字是否只是「尚未執行」的提示(任一語言;舊紀錄也可能存了提示文字)
+  function normTxt(s) { return String(s || "").replace(/<[^>]+>/g, "").replace(/\s+/g, "").trim(); }
+  function isPlaceholderText(d, txt) {
+    var n = normTxt(txt);
+    if (!n) return true;
+    if (!d.hint || !window.i18nAll) return false;
+    return window.i18nAll(d.hint).some(function (h) { return normTxt(h) === n; });
+  }
   // body 可為單一 id 或 id 陣列
   function sectionBodies(d) {
     return (Array.isArray(d.body) ? d.body : [d.body])
@@ -2897,11 +2911,32 @@
     clearTimeout(histSaveTimer);
     histSaveTimer = setTimeout(autoSaveAnalysis, 2500); // 各面板非同步到位,防抖合併寫入
   }
+  // 指標格(.ind = dt 名稱 + dd 數值)合成一行「名稱:數值」,比較頁才好逐項對讀;其餘照畫面文字
+  function panelText(el) {
+    if (!el) return "";
+    if (!el.querySelector(".ind")) return el.innerText;
+    var lines = [];
+    Array.prototype.forEach.call(el.children, function (c) {
+      if (c.classList.contains("ind")) {
+        var dt = c.querySelector("dt"), dd = c.querySelector("dd");
+        var k = dt ? dt.textContent.replace(/\s+/g, " ").trim() : "";
+        var v = dd ? dd.textContent.replace(/\s+/g, " ").trim() : "";
+        lines.push(k && v ? k + ":" + v : (k || v));
+      } else {
+        var x = (c.innerText || "").trim();
+        if (x) lines.push(x);
+      }
+    });
+    return lines.join("\n");
+  }
   function captureSections() {
     return SECTION_DEFS.map(function (d) {
       var r = document.getElementById(d.region);
-      var txt = ((r ? r.innerText : "") + "\n" + sectionBodies(d).map(function (b) { return b.innerText; }).join("\n"))
-        .replace(/\n{3,}/g, "\n\n").trim();
+      var head = r ? r.innerText.trim() : "";
+      var body = sectionBodies(d).map(panelText).join("\n").trim();
+      var txt = (body || !isPlaceholderText(d, head))
+        ? (head + "\n" + body).replace(/\n{3,}/g, "\n\n").trim()
+        : "";
       return { key: d.key, zh: t(d.zhKey), text: txt };
     });
   }
@@ -3040,9 +3075,21 @@
     (rec.sections || []).forEach(function (s) {
       for (var i = 0; i < SECTION_DEFS.length; i++) {
         if (SECTION_DEFS[i].key !== s.key) continue;
-        var r = document.getElementById(SECTION_DEFS[i].region);
-        if (r) { r.textContent = s.text || ""; r.style.whiteSpace = "pre-line"; }
-        sectionBodies(SECTION_DEFS[i]).forEach(function (b) { b.innerHTML = ""; });
+        var d = SECTION_DEFS[i];
+        var r = document.getElementById(d.region);
+        if (r) {
+          if (isPlaceholderText(d, s.text)) {
+            r.textContent = d.hint ? t(d.hint) : ""; // 該次未執行:顯示一般提示
+          } else {
+            // 文字快照包在 span 內換行,不改面板本身樣式(之後重新分析時版面不受影響)
+            var sp = document.createElement("span");
+            sp.style.whiteSpace = "pre-line";
+            sp.textContent = s.text;
+            r.innerHTML = "";
+            r.appendChild(sp);
+          }
+        }
+        sectionBodies(d).forEach(function (b) { b.innerHTML = ""; });
         break;
       }
     });
@@ -3051,55 +3098,162 @@
   }
 
   // ---- 比較:2–3 筆並排(新視窗;<820px 改上下堆疊)----
-  function buildCompareDoc(recs) {
+  // 關鍵指標:由各筆保存的 analysis 數值取出(不靠面板文字),可算「變化 = 新 − 舊」
+  // d:小數位數;未給 d 者為文字(不算變化)
+  var CMP_METRICS = [
+    { k: "ind.pop", d: 0, f: function (a) { return a.population && a.population.pop; } },
+    { k: "ind.aging_index", d: 1, f: function (a) { return a.population && a.population.aging_index; } },
+    { k: "h.elderly", d: 1, u: "%", f: function (a) { return a.population && a.population.elderly_share; } },
+    { k: "h.child", d: 1, u: "%", f: function (a) { return a.population && a.population.child_share; } },
+    { k: "hist.m.osmGreen", d: 1, u: "%", f: function (a) { return a.green ? osmCoverageOf(a) : null; } },
+    { k: "g.nearestDist", d: 0, u: "m", f: function (a) { return a.green && a.green.nearest_park_dist_m; } },
+    { k: "hist.m.parks500", d: 0, f: function (a) { return a.green && a.green.park_count_500m; } },
+    { k: "hist.m.parksSite", d: 0, f: function (a) { return a.green && a.green.park_count_in_site; } },
+    { k: "ndvi.mean", d: 2, f: function (a) { return a.ndvi && a.ndvi.mean; } },
+    { k: "ndvi.veg", d: 1, u: "%", f: function (a) { return a.ndvi && a.ndvi.veg_cover_pct_ndvi_ge_0_2; } },
+    { k: "ndvi.dense", d: 1, u: "%", f: function (a) { return a.ndvi && a.ndvi.dense_veg_pct_ndvi_ge_0_6; } },
+    { k: "hist.m.ndviDate", f: function (a) { return a.ndvi && a.ndvi.scene_date; } },
+    { k: "hist.m.ossl", d: 0, f: function (a) { return a.openspace_service_level && a.openspace_service_level.overall; } },
+    { k: "hist.m.heatDays", d: 0, uk: "hist.uDay", f: function (a) { return a.climate && a.climate.heat_days_per_year_ge32c; } },
+    { k: "hist.m.heatLv", f: function (a) { return a.heat && a.heat.vulnerability_level; } },
+    { k: "aqi.aqi", d: 0, f: function (a) { return a.air_quality && a.air_quality.aqi; } },
+    { k: "aqi.pm25", d: 0, u: "µg/m³", f: function (a) { return a.air_quality && a.air_quality.pm25; } },
+    { k: "hist.m.hgip", d: 0, f: function (a) { return a.healing_green_intervention && a.healing_green_intervention.index; } },
+    { k: "hist.m.hgipLv", f: function (a) { return a.healing_green_intervention && a.healing_green_intervention.priority_level; } },
+    { k: "hist.m.species", d: 0, f: function (a) { return a.biodiversity && a.biodiversity.species_count; } },
+    { k: "hist.m.reviews", d: 0, f: function (a) { return a.site_reviews && a.site_reviews.review_count; } },
+    { k: "hist.m.rating", d: 2, f: function (a) { return a.site_reviews && a.site_reviews.avg_rating; } }
+  ];
+  function cmpMetricVal(m, r) {
+    var v = null;
+    try { v = r.analysis ? m.f(r.analysis) : null; } catch (e) { v = null; }
+    if (v === "" || v === undefined) v = null;
+    if (m.d != null && v != null) { v = Number(v); if (!isFinite(v)) v = null; }
+    return v;
+  }
+  function cmpUnit(m) { return m.uk ? t(m.uk) : (m.u || ""); }
+  function cmpFmt(m, v) {
+    if (v == null) return "—";
+    if (m.d == null) return String(v);
+    var u = cmpUnit(m);
+    return v.toLocaleString(undefined, { minimumFractionDigits: m.d, maximumFractionDigits: m.d }) + (u ? " " + u : "");
+  }
+  function cmpDelta(m, a, b) {
+    if (m.d == null || a == null || b == null) return null;
+    var x = +(b - a).toFixed(m.d);
+    return x === 0 ? 0 : x; // 避免 -0
+  }
+  function cmpSiteLabel(r) {
+    if (r.areaHa != null) return r.areaHa + t("r.uHa");
+    return r.lat != null ? t("hist.cmpPoint", { r: GREEN_RADIUS }) : "—";
+  }
+  function csvCell(s) {
+    s = String(s == null ? "" : s);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+
+  function buildCompareDoc(recsIn) {
+    // 依保存時間由舊到新,「變化」= 新 − 舊
+    var recs = recsIn.slice().sort(function (a, b) { return String(a.savedAt).localeCompare(String(b.savedAt)); });
+    var two = recs.length === 2;
     var css = "body{font-family:'Noto Sans TC',system-ui,sans-serif;margin:24px;color:#222}" +
-      "h1{font-size:20px}h2{font-size:15px;margin:18px 0 6px;border-bottom:2px solid #3ba88f;padding-bottom:3px}" +
+      "h1{font-size:20px;margin:0 0 4px}h2{font-size:15px;margin:18px 0 6px;border-bottom:2px solid #3ba88f;padding-bottom:3px}" +
+      ".bar{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 14px}" +
+      ".bar button{font:inherit;font-size:13px;padding:6px 12px;border:1px solid #3ba88f;border-radius:6px;background:#fff;color:#2a7d68;cursor:pointer}" +
+      ".bar button:hover{background:#eef5f3}" +
+      ".note{font-size:12px;color:#666;margin:4px 0 10px;line-height:1.6}" +
       "table{border-collapse:collapse;width:100%;margin-bottom:8px}" +
       "th,td{border:1px solid #ccc;padding:6px 8px;font-size:13px;text-align:left;vertical-align:top}" +
       "th{background:#eef5f3;white-space:nowrap}" +
+      "td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}" +
+      "td.dl{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;color:#555;background:#fafafa}" +
       ".cmp-grid{display:grid;grid-template-columns:repeat(" + recs.length + ",1fr);gap:10px}" +
-      ".cmp-cell{border:1px solid #ddd;border-radius:6px;padding:8px;font-size:12.5px;white-space:pre-line}" +
+      ".cmp-cell{border:1px solid #ddd;border-radius:6px;padding:8px;font-size:12.5px;white-space:pre-line;line-height:1.55}" +
       ".cmp-cell .who{font-weight:700;color:#2a7d68;margin-bottom:4px;white-space:normal}" +
-      "@media (max-width:820px){.cmp-grid{grid-template-columns:1fr}}";
+      ".tbl-wrap{overflow-x:auto}" +
+      "@media (max-width:820px){.cmp-grid{grid-template-columns:1fr}body{margin:14px}}" +
+      "@media print{.bar{display:none}body{margin:10mm}h2{break-after:avoid}.cmp-cell{break-inside:avoid}}";
+    var names = recs.map(histDisplayName);
     var html = "<h1>" + esc(t("hist.cmpTitle")) + "</h1>";
+    html += "<div class='bar'><button type='button' id='cmp-print'>" + esc(t("hist.cmpPrint")) + "</button>" +
+      "<button type='button' id='cmp-csv'>" + esc(t("hist.cmpCsv")) + "</button></div>";
+
     // 頂端:基本資料對照表
-    html += "<table><tr><th></th>";
-    recs.forEach(function (r) { html += "<th>" + esc(histDisplayName(r)) + "</th>"; });
+    var csv = [[""].concat(names).concat(two ? [t("hist.cmpDelta")] : [])];
+    html += "<div class='tbl-wrap'><table><tr><th></th>";
+    names.forEach(function (n) { html += "<th>" + esc(n) + "</th>"; });
     html += "</tr>";
     var metaRows = [
-      [t("hist.cmpName"), function (r) { return histDisplayName(r); }],
-      [t("r.coord"), function (r) { return r.lat != null ? r.lat + "°N, " + r.lng + "°E" : "—"; }],
-      [t("hist.cmpArea"), function (r) { return r.areaHa != null ? r.areaHa + " " + t("r.uHa") : "—"; }],
-      [t("ind.pop"), function (r) {
-        var p = r.analysis && r.analysis.population;
-        return p && p.pop != null ? Math.round(p.pop).toLocaleString() : "—";
-      }],
+      [t("hist.cmpCoord"), function (r) { return r.lat != null ? r.lat + "°N, " + r.lng + "°E" : "—"; }],
+      [t("hist.cmpArea"), cmpSiteLabel],
       [t("hist.cmpSaved"), function (r) { var d = new Date(r.savedAt); return isNaN(d) ? "—" : d.toLocaleString(); }]
     ];
     metaRows.forEach(function (row) {
+      var vals = recs.map(row[1]);
       html += "<tr><th>" + esc(row[0]) + "</th>";
-      recs.forEach(function (r) { html += "<td>" + esc(row[1](r)) + "</td>"; });
+      vals.forEach(function (v) { html += "<td>" + esc(v) + "</td>"; });
       html += "</tr>";
+      csv.push([row[0]].concat(vals).concat(two ? [""] : []));
     });
-    html += "</table>";
-    // 各面向並排
+    html += "</table></div>";
+
+    // 關鍵指標對照(全部缺值的列略過)
+    var keyRows = "";
+    CMP_METRICS.forEach(function (m) {
+      var vals = recs.map(function (r) { return cmpMetricVal(m, r); });
+      if (!vals.some(function (v) { return v != null; })) return;
+      var label = t(m.k);
+      keyRows += "<tr><th>" + esc(label) + "</th>";
+      vals.forEach(function (v) { keyRows += "<td class='" + (m.d != null ? "num" : "") + "'>" + esc(cmpFmt(m, v)) + "</td>"; });
+      var dl = two ? cmpDelta(m, vals[0], vals[1]) : null;
+      var dlTxt = dl == null ? "" : (dl > 0 ? "+" : dl < 0 ? "−" : "±") +
+        Math.abs(dl).toLocaleString(undefined, { minimumFractionDigits: m.d, maximumFractionDigits: m.d });
+      if (two) keyRows += "<td class='dl'>" + esc(dlTxt) + "</td>";
+      keyRows += "</tr>";
+      csv.push([label + (cmpUnit(m) ? " (" + cmpUnit(m) + ")" : "")]
+        .concat(vals.map(function (v) { return v == null ? "" : v; }))
+        .concat(two ? [dl == null ? "" : dl] : []));
+    });
+    if (keyRows) {
+      html += "<h2>" + esc(t("hist.cmpKey")) + "</h2><p class='note'>" + esc(t("hist.cmpNote")) + "</p>";
+      html += "<div class='tbl-wrap'><table><tr><th></th>";
+      names.forEach(function (n) { html += "<th>" + esc(n) + "</th>"; });
+      if (two) html += "<th>" + esc(t("hist.cmpDelta")) + "</th>";
+      html += "</tr>" + keyRows + "</table></div>";
+    }
+
+    // 各面向並排(只有提示文字、未執行的面向略過)
+    var detail = "";
     SECTION_DEFS.forEach(function (d) {
       var texts = recs.map(function (r) {
         var s = (r.sections || []).filter(function (x) { return x.key === d.key; })[0];
-        return s ? s.text : "";
+        var txt = s ? s.text : "";
+        return isPlaceholderText(d, txt) ? "" : txt;
       });
       if (!texts.some(function (x) { return x && x.trim(); })) return; // 全空跳過
-      html += "<h2>" + esc(t(d.zhKey)) + "</h2><div class='cmp-grid'>";
+      detail += "<h2>" + esc(t(d.zhKey)) + "</h2><div class='cmp-grid'>";
       recs.forEach(function (r, i) {
-        html += "<div class='cmp-cell'><div class='who'>" + esc(histDisplayName(r)) + "</div>" +
+        detail += "<div class='cmp-cell'><div class='who'>" + esc(names[i]) + "</div>" +
           esc(texts[i] || "—") + "</div>";
       });
-      html += "</div>";
+      detail += "</div>";
     });
-    return "<!DOCTYPE html><html><head><meta charset='utf-8'>" +
+    if (detail) html += "<h2 style='border:0;margin-top:26px;font-size:17px'>" + esc(t("hist.cmpDetail")) + "</h2>" + detail;
+
+    var csvText = "﻿" + csv.map(function (row) { return row.map(csvCell).join(","); }).join("\r\n");
+    var d0 = new Date(), pad = function (n) { return (n < 10 ? "0" : "") + n; };
+    var csvName = "heals-compare-" + d0.getFullYear() + pad(d0.getMonth() + 1) + pad(d0.getDate()) + ".csv";
+    // 新視窗內的按鈕:列印、下載 CSV(資料以 JSON 字串內嵌;</ 跳脫避免提前結束 script)
+    var script = "<script>(function(){var csv=" + JSON.stringify(csvText).replace(/</g, "\\u003c") +
+      ",name=" + JSON.stringify(csvName) + ";" +
+      "document.getElementById('cmp-print').onclick=function(){window.print();};" +
+      "document.getElementById('cmp-csv').onclick=function(){var b=new Blob([csv],{type:'text/csv;charset=utf-8'});" +
+      "var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();" +
+      "setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},500);};})();<\/script>";
+    return "<!DOCTYPE html><html lang='" + (window.i18nLang && window.i18nLang() === "en" ? "en" : "zh-Hant") + "'><head><meta charset='utf-8'>" +
       "<meta name='viewport' content='width=device-width, initial-scale=1'>" +
       "<title>" + esc(t("hist.cmpTitle")) + "</title><style>" + css + "</style></head><body>" +
-      html + "</body></html>";
+      html + script + "</body></html>";
   }
   if (histCompareBtn) {
     histCompareBtn.addEventListener("click", function () {
