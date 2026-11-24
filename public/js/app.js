@@ -158,10 +158,12 @@
   var lastAnalysisRev = -1;            // lastAnalysis 建立時的 siteRev
   var lastNdvi = null, lastNdviRev = -1; // NDVI 結果(可序列化部分)與其 siteRev
   var lastReviews = null;              // 在地評價 · 評論分析結果(使用者提供之文字,與座標無關)
+  var lastLaw = null, lastLawRev = -1;   // 法規檢索 · 影響分析結果與其 siteRev
 
   function onSiteChanged() {
     siteRev++;
     resetNdviPanel(); // NDVI 疊圖屬於舊範圍,換地點即清除
+    resetLawPanel();  // 法規檢索結果屬於舊基地
   }
   // 新建 lastAnalysis 時呼叫:併入版本相符的 NDVI 與評論分析結果
   function attachExtras() {
@@ -169,6 +171,7 @@
     lastAnalysisRev = siteRev;
     if (lastNdvi && lastNdviRev === siteRev) lastAnalysis.ndvi = lastNdvi;
     if (lastReviews) lastAnalysis.site_reviews = lastReviews;
+    if (lastLaw && lastLawRev === siteRev) lastAnalysis.regulations = lastLaw;
   }
 
   // =========================================================
@@ -2214,6 +2217,208 @@
   biodivBtn.addEventListener("click", analyzeBiodiversity);
 
   // =========================================================
+  //  法規檢索 · 影響分析(/api/regulations/*)
+  //  後端以背景 Function 呼叫 Claude(只在官方法規網站搜尋 / 讀取),進度與結果寫入
+  //  Netlify Blobs;前端送出後每 3 秒輪詢一次狀態。
+  // =========================================================
+  var lawRegionEl = document.getElementById("law-region");
+  var lawZoningEl = document.getElementById("law-zoning");
+  var lawUseEl = document.getElementById("law-use");
+  var lawNotesEl = document.getElementById("law-notes");
+  var lawBtn = document.getElementById("law-btn");
+  var lawStatusEl = document.getElementById("law-status");
+  var lawOutputEl = document.getElementById("law-output");
+  var lawSourceEl = document.getElementById("law-source");
+  var lawState = { run: 0, timer: null, active: false };
+  var LAW_POLL_MS = 3000;
+  var LAW_MAX_MS = 8 * 60 * 1000;          // 最長等候(背景作業上限 15 分鐘,一般 1–3 分鐘)
+  var LAW_START_GRACE_MS = 90 * 1000;      // 送出後這麼久仍無任何狀態 → 視為背景作業未啟動
+
+  function escAttr(s) { return esc(s).replace(/"/g, "&quot;").replace(/'/g, "&#39;"); }
+
+  function resetLawPanel() {
+    var wasActive = lawState.active;
+    lawState.run++; // 進行中的輪詢作廢(背景作業會自行跑完,結果留在後端)
+    lawState.active = false;
+    clearTimeout(lawState.timer);
+    lastLaw = null;
+    lawRegionEl.textContent = t("law.hint");
+    lawStatusEl.textContent = wasActive ? t("law.stale") : "";
+    lawOutputEl.innerHTML = "";
+    lawSourceEl.textContent = "";
+    lawBtn.disabled = false;
+  }
+
+  function newLawJobId() {
+    var r = (Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)).replace(/[^0-9a-z]/g, "");
+    return Date.now().toString(36) + "-" + r.slice(0, 12);
+  }
+
+  function lawPayload(jobId) {
+    var p = lastRegionProps || {};
+    var a = lastAnalysis || {};
+    var os = a.openspace_service_level;
+    return {
+      jobId: jobId,
+      lang: window.i18nLang ? window.i18nLang() : "zh",
+      site: {
+        county: p.COUNTYNAME || "", town: p.TOWNNAME || "", village: p.VILLNAME || "",
+        place: lastRegionTitle || "",
+        lat: lastFocus ? +lastFocus.lat.toFixed(5) : null,
+        lng: lastFocus ? +lastFocus.lng.toFixed(5) : null,
+        mode: lastSitePolygon ? "site" : "point",
+        area_ha: lastSitePolygon ? lastSiteAreaHa : null,
+        radius_m: GREEN_RADIUS
+      },
+      // 後端只取用白名單欄位;這裡先挑出相關物件以縮小請求
+      indicators: {
+        population: a.population || lastRegionProps || null,
+        green: a.green || null,
+        ndvi: a.ndvi || (lastNdviRev === siteRev ? lastNdvi : null),
+        heat: a.heat || null,
+        healing_green_intervention: a.healing_green_intervention || null,
+        openspace_service_level: os ? { overall: os.overall, band: os.band } : null
+      },
+      inputs: { zoning: lawZoningEl.value.trim(), use: lawUseEl.value.trim(), notes: lawNotesEl.value.trim() }
+    };
+  }
+
+  // 結果 HTML(面板與匯出報告共用):輸入條件 + AI 分析(Markdown)+ 來源清單
+  function lawResultHtml(res) {
+    var inp = res.inputs || {};
+    var html = "<p class='hint'>" + esc(t("law.inputsLine", {
+      z: inp.zoning || t("law.none"), u: inp.use || t("law.none") })) + "</p>";
+    html += renderReport(res.markdown || "");
+    if (res.truncated) html += "<p class='ai-err'>" + esc(t("law.truncated")) + "</p>";
+    if (res.sources && res.sources.length) {
+      html += "<div class='law-sources'><b>" + esc(t("law.sources")) + "</b><ol>" +
+        res.sources.map(function (x) {
+          return "<li><a href='" + escAttr(x.url) + "' target='_blank' rel='noopener noreferrer'>" +
+            esc(x.title || x.url) + "</a></li>";
+        }).join("") + "</ol></div>";
+    }
+    return html;
+  }
+  function lawUsageText(u) {
+    if (!u) return "";
+    return t("law.by", {
+      n: u.web_search_requests || 0, f: u.web_fetch_requests || 0,
+      in: (u.input_tokens || 0).toLocaleString(), out: (u.output_tokens || 0).toLocaleString(),
+      usd: u.est_usd != null ? u.est_usd : "—"
+    });
+  }
+  function renderLawResult(res) {
+    var s = res.site || {};
+    var loc = [s.county, s.town].filter(Boolean).join("") || s.place || lastRegionTitle || "";
+    lawRegionEl.textContent = t("law.doneTitle", { loc: loc });
+    lawOutputEl.innerHTML = lawResultHtml(res);
+    // 連結一律另開分頁(避免離開本工具而遺失分析狀態),且只保留 http(s)
+    lawOutputEl.querySelectorAll("a[href]").forEach(function (el) {
+      if (!/^https?:\/\//i.test(el.getAttribute("href"))) { el.removeAttribute("href"); return; }
+      el.target = "_blank";
+      el.rel = "noopener noreferrer";
+    });
+    lawSourceEl.textContent = lawUsageText(res.usage);
+  }
+  function renderLawProgress(st, secs) {
+    var steps = st.steps || [];
+    var n = 0, f = 0;
+    steps.forEach(function (x) { if (x.tool === "web_search") n++; else if (x.tool === "web_fetch") f++; });
+    var html = esc(st.state === "running" ? t("law.running", { n: n, f: f, s: secs }) : t("law.queued", { s: secs }));
+    var last = steps[steps.length - 1];
+    if (last && last.q) html += "<br>" + esc(t("law.last", { q: last.q }));
+    lawStatusEl.innerHTML = html;
+  }
+
+  lawBtn.addEventListener("click", function () {
+    if (/github\.io$/i.test(location.hostname)) {
+      lawStatusEl.innerHTML = esc(t("law.ghPages")) +
+        "<a href='https://map.healsdesign.org' target='_blank' rel='noopener'>map.healsdesign.org</a>";
+      return;
+    }
+    if (!lastFocus) { lawStatusEl.textContent = t("law.needSite"); return; }
+
+    clearTimeout(lawState.timer);
+    var run = ++lawState.run, rev = siteRev, t0 = Date.now();
+    var jobId = newLawJobId();
+    var payload = lawPayload(jobId);
+    lawState.active = true;
+    lawBtn.disabled = true;
+    lastLaw = null;
+    lawRegionEl.textContent = t("law.hint");
+    lawOutputEl.innerHTML = "";
+    lawSourceEl.textContent = "";
+    lawStatusEl.textContent = t("law.sending");
+
+    function fail(msg) {
+      if (run !== lawState.run) return;
+      lawState.active = false;
+      lawBtn.disabled = false;
+      lawStatusEl.innerHTML = "<span class='ai-err'>" + esc(t("law.fail") + msg) + "</span>";
+    }
+    function finish(st) {
+      lawState.active = false;
+      lawBtn.disabled = false;
+      lawStatusEl.textContent = "";
+      var res = {
+        generated_at: st.finishedAt || new Date().toISOString(),
+        site: { county: payload.site.county, town: payload.site.town, place: payload.site.place,
+          mode: payload.site.mode, area_ha: payload.site.area_ha },
+        inputs: payload.inputs,
+        markdown: String(st.markdown || ""),
+        truncated: !!st.truncated,
+        sources: (st.sources || []).slice(0, 30),
+        model: st.model || null,
+        usage: st.usage || null
+      };
+      lastLaw = res;
+      lastLawRev = rev;
+      renderLawResult(res);
+      // 併入本次分析(保存到歷史紀錄、匯出報告);綠地分析尚未執行時,之後建立分析時會由 attachExtras 併入
+      if (lastAnalysis && lastAnalysisRev === rev) { lastAnalysis.regulations = res; scheduleAutoSave(); }
+    }
+    function poll() {
+      lawState.timer = setTimeout(function () {
+        if (run !== lawState.run) return;
+        fetch("./api/regulations/status?id=" + encodeURIComponent(jobId), { cache: "no-store" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              if (!r.ok) throw new Error((j && j.error) || ("HTTP " + r.status));
+              return j;
+            });
+          })
+          .then(function (st) {
+            if (run !== lawState.run) return;
+            var waited = Date.now() - t0;
+            if (st.state === "done") { finish(st); return; }
+            if (st.state === "error") { fail(st.error || ""); return; }
+            if (st.state === "queued" && waited > LAW_START_GRACE_MS) { fail(t("law.notStarted")); return; }
+            if (waited > LAW_MAX_MS) { fail(t("law.timeout")); return; }
+            renderLawProgress(st, Math.round(waited / 1000));
+            poll();
+          })
+          .catch(function () {
+            if (run !== lawState.run) return;
+            if (Date.now() - t0 > LAW_MAX_MS) { fail(t("law.timeout")); return; }
+            poll(); // 暫時性網路錯誤:繼續輪詢
+          });
+      }, LAW_POLL_MS);
+    }
+
+    fetch("./api/regulations/start", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload)
+    })
+      .then(function (r) {
+        if (run !== lawState.run) return;
+        if (!r.ok) throw new Error("HTTP " + r.status); // 背景 Function 正常回 202
+        poll();
+      })
+      .catch(function (e) { fail(String((e && e.message) || e)); });
+  });
+
+  // =========================================================
   //  第三階段 3c:AI 解讀(呼叫 /api/analyze,需 Cloudflare Pages 部署)
   // =========================================================
   var aiBtn = document.getElementById("ai-btn");
@@ -2261,6 +2466,13 @@
       .join("");
   }
 
+  // AI 報告不帶法規檢索全文(另有專屬面板;且報告提示詞限定只引用其提供之法規)
+  function aiReportPayload() {
+    var o = Object.assign({}, lastAnalysis, { lang: (window.i18nLang ? window.i18nLang() : "zh") });
+    delete o.regulations;
+    return o;
+  }
+
   aiBtn.addEventListener("click", function () {
     // GitHub Pages 為純靜態、無後端,直接導向含後端的 Cloudflare 版本
     if (/github\.io$/i.test(location.hostname)) {
@@ -2284,7 +2496,7 @@
     fetch("./api/analyze", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(Object.assign({}, lastAnalysis, { lang: (window.i18nLang ? window.i18nLang() : "zh") }))
+      body: JSON.stringify(aiReportPayload())
     })
       .then(function (r) {
         var ct = r.headers.get("content-type") || "";
@@ -2550,6 +2762,11 @@
       }
     }
 
+    var lw = lastAnalysis.regulations;
+    if (lw && lw.markdown) {
+      html += "<h2>" + t("r.hLaw") + "</h2><div>" + lawResultHtml(lw) + "</div>" +
+        (lw.usage ? "<p class='src'>" + esc(lawUsageText(lw.usage)) + "</p>" : "");
+    }
     html += "<h2>" + t("r.hAI") + "</h2><div>" + aiHtml + "</div>";
 
     html += "<h2>" + t("r.hSrc") + "</h2><p class='src'>" + t("r.src") + "</p>";
@@ -2862,7 +3079,8 @@
     { key: "aqi", zhKey: "aqi.h", region: "aqi-region", body: "aqi-indicators", hint: "aqi.hint" },
     { key: "hgip", zhKey: "hgip.h", region: "hgip-region", body: "hgip-indicators", hint: "hgip.hint" },
     { key: "biodiv", zhKey: "biodiv.h", region: "biodiv-region", body: "biodiv-indicators", hint: "biodiv.hint" },
-    { key: "rv", zhKey: "rv.h", region: "rv-region", body: ["rv-indicators", "rv-summary", "rv-ai-output"], hint: "rv.hint" }
+    { key: "rv", zhKey: "rv.h", region: "rv-region", body: ["rv-indicators", "rv-summary", "rv-ai-output"], hint: "rv.hint" },
+    { key: "law", zhKey: "law.h", region: "law-region", body: "law-output", hint: "law.hint" }
   ];
   // 面板文字是否只是「尚未執行」的提示(任一語言;舊紀錄也可能存了提示文字)
   function normTxt(s) { return String(s || "").replace(/<[^>]+>/g, "").replace(/\s+/g, "").trim(); }
@@ -3051,11 +3269,14 @@
     siteRev++;
     resetNdviPanel();
     resetReviewResults();
+    resetLawPanel();
     lastAnalysis = rec.analysis || null;
     lastAnalysisRev = siteRev;
     lastNdvi = (lastAnalysis && lastAnalysis.ndvi) || null;
     lastNdviRev = siteRev;
     lastReviews = (lastAnalysis && lastAnalysis.site_reviews) || null;
+    lastLaw = (lastAnalysis && lastAnalysis.regulations) || null;
+    lastLawRev = siteRev;
     histRunRef = lastAnalysis; histRunId = rec.id; // 後續自動保存仍更新同一筆
     lastRegionTitle = rec.placeName || "";
     lastSitePolygon = null;
@@ -3093,6 +3314,14 @@
         break;
       }
     });
+    // 法規檢索:以保存的 Markdown 重新排版(比文字快照好讀),並還原當時填的條件
+    if (lastLaw && lastLaw.markdown) {
+      renderLawResult(lastLaw);
+      var li = lastLaw.inputs || {};
+      lawZoningEl.value = li.zoning || "";
+      lawUseEl.value = li.use || "";
+      lawNotesEl.value = li.notes || "";
+    }
     updateZoningBtnState();
     histStatus(t("hist.loaded"));
   }
@@ -3326,6 +3555,7 @@
       renderNdvi(ndviState.result);
       if (lastNdvi) lastNdvi.level = t("ndvi.lv." + ndviLevelKey(ndviState.result.mean));
     }
+    if (lastLaw && lastLaw.markdown) renderLawResult(lastLaw); // applyI18n 會把標題列換回提示文字
     if (rvState.stats) {
       renderReviewStats();
       lastReviews = reviewsForAnalysis();

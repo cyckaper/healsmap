@@ -70,6 +70,16 @@
 - 不採 NDVI ≥ 0.2 的植被覆蓋率:它含草地與稀疏植生,一般街廓多已超過 30%(如臺大校園周邊 500 m 為 80.6%),綠地缺口會失去鑑別力;高植生比例(臺大 28.4%、西門町 0.5%)較接近 30% 樹冠目標的本意。
 - 熱環境資料中的 `green_input` 標示實際採用的來源(`ndvi_dense_veg_pct` / `osm_green_coverage_pct`)。
 
+### 法規檢索 · 影響分析
+放好標記或畫出基地後,填入**使用分區 / 用地**與**預定開發用途**(皆選填,另有補充欄),按「搜尋相關法規並分析」:
+- **檢索**:後端以 Claude(`claude-opus-5-5`)的伺服器端 `web_search` / `web_fetch` 檢索,範圍**只限官方網站**:全國法規資料庫(law.moj.gov.tw)、內政部國土管理署,以及基地所在縣市政府網域(含其法規查詢系統;依 `COUNTYNAME` 對應)。每次至多搜尋 6 次、讀取 8 頁
+- **判斷適用**:依縣市、使用分區、預定用途、面積(點模式的 500 m 為分析範圍,非基地面積)與分析指標(綠覆率、公園可及、高齡比例、熱脆弱度、療癒綠地指數、服務水準)挑選相關面向:土地使用分區管制、公共設施用地與通盤檢討標準、都市設計審議、基地綠化 / 保水、無障礙、樹木保護、環評門檻、山坡地 / 地質敏感區、文化資產、都市更新、用途相關的設施設置標準等
+- **輸出**:依面向分組列出 6–12 條法條,每條附官方來源連結,並寫出「規定要旨 / 對本基地的影響 / 規劃設計因應 / 性質(強制、審議、參考)」;沒讀到條文的法規只列入「需進一步確認的事項」;使用分區未填時不自行假設
+- **背景執行**:約 1–3 分鐘,超過 Netlify 串流 Function 的 60 秒上限,所以由背景 Function(上限 15 分鐘)執行,進度與結果寫入 Netlify Blobs,前端每 3 秒輪詢,顯示已搜尋 / 讀取次數與最近查詢;完成後顯示實際 token 用量與估算費用
+- **保存**:結果併入本次分析,自動保存到歷史紀錄(比較頁可並排)、收入匯出報告;**不**送進「AI 基地分析報告」的請求
+- 拒答時由 API 伺服器端自動改用建議的備援模型(`fallbacks: "default"`)
+- ⚠ AI 整理僅供規劃初期參考,不構成法律意見;法規可能修正,實際適用以主管機關公告與最新條文為準
+
 ### AI 解讀
 將上述真實數值送至後端 `/api/analyze`,由 Claude 產生五段式繁中報告(基地概述 / 開放空間綠地 / 熱環境健康 / 規劃建議 / 資料與限制),嚴格限定只用提供的數值並引用法規。
 
@@ -104,6 +114,12 @@
 │        持環境變數 ANTHROPIC_API_KEY,代理呼叫 ↓
 │        ▼
 └─ Anthropic API (claude-haiku-4-5) ──────────── AI 報告 / 意見摘要
+
+法規檢索(背景執行,結果存 Netlify Blobs,前端輪詢):
+  POST /api/regulations/start   netlify/functions/regulations-start.mjs(背景 Function,回 202)
+        └→ Anthropic API (claude-opus-5-5 + web_search / web_fetch,只限官方法規網站)
+  GET  /api/regulations/status  netlify/functions/regulations-status.mjs(讀 Blobs: regulation-jobs)
+  共用邏輯:netlify/lib/regulations-core.mjs(工作紀錄保留 7 天)
 ```
 
 前端另直接呼叫多個**免金鑰公開 API**(不經後端):
@@ -154,8 +170,10 @@
 | **產生 AI 基地分析報告** | ~2,000(系統提示+數據,且系統提示有 **prompt caching** 折扣) | ~1,500(七節報告) | **約 US$0.02–0.03(約 NT$0.7–1)** |
 | **AI 摘要意見主題** | 視意見則數,~1,000–6,000 | ~600 | **約 US$0.01–0.03(約 NT$0.3–1)** |
 | **AI 分析評論主題與情緒** | 視評論則數,~1,000–25,000(上限約 3 萬字) | ~700 | **約 US$0.01–0.03(約 NT$0.3–1)** |
+| **法規檢索 · 影響分析**(`claude-opus-5-5`,US$4 / 20 每百萬 token + web search US$10 / 千次) | 含搜尋結果與條文頁,~30,000–150,000 | ~2,000–4,000 | **約 US$0.3–1(約 NT$10–30)**,完成後顯示實際估算 |
 
 - 粗估:**每次 AI 動作約新台幣 1 元上下**;1 美元大約可跑 30–50 次報告。
+- 法規檢索是本工具**最貴**的一項(多輪搜尋、讀取條文頁,且使用 Opus);如需降低成本,可把 `netlify/lib/regulations-core.mjs` 的 `MODEL` 改為 `claude-sonnet-5-5`(US$2 / 10)或調低 `max_uses`。
 - **省錢設計**:系統提示已開 **prompt caching**(重複部分打折);意見摘要上限 200 則;只有「按按鈕」才呼叫 AI,瀏覽看地圖/疊圖/詞頻統計**完全不花錢**。
 
 ### 在哪裡看每次收費
@@ -189,6 +207,9 @@
 │       ├── villages.json         # 村里界線 + 人口指標
 │       └── meta.json             # 資料來源、統計期、對應率
 ├── netlify/functions/analyze.mjs # ★ 實際部署的後端:/api/analyze
+├── netlify/functions/regulations-start.mjs   # 法規檢索(背景):/api/regulations/start
+├── netlify/functions/regulations-status.mjs  # 法規檢索狀態:/api/regulations/status
+├── netlify/lib/regulations-core.mjs          # 法規檢索共用邏輯(提示詞、官方網域、續跑、來源整理)
 ├── functions/api/analyze.js      # (未使用,Cloudflare 格式備援)
 ├── scripts/build-data.mjs        # 界線 + 人口資料建置腳本
 ├── netlify.toml                  # Netlify 部署設定

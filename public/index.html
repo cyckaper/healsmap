@@ -10,7 +10,7 @@
   <!-- Leaflet.draw -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
 
-  <link rel="stylesheet" href="./css/style.css?v=5k" />
+  <link rel="stylesheet" href="./css/style.css?v=5l" />
 </head>
 <body>
   <div id="app">
@@ -221,6 +221,35 @@
         <p class="hint" id="cm-source"></p>
       </section>
 
+      <!-- 法規檢索 · 影響分析(AI 於官方法規網站檢索,背景執行,結果存入 Netlify Blobs 供輪詢) -->
+      <section class="panel">
+        <h2 data-i18n="law.h">法規檢索 · 影響分析</h2>
+        <details class="help-box"><summary data-i18n="help.t">ⓘ 說明與計算方式</summary><div class="help-body" data-i18n="help.law" data-i18n-html></div></details>
+        <p class="info-region" id="law-region" data-i18n="law.hint">先放標記或畫基地,填入使用分區與預定用途(選填),由 AI 到官方法規網站檢索,整理會影響本基地規劃設計的法條,並逐條分析影響與設計因應。</p>
+        <label class="law-label" for="law-zoning" data-i18n="law.zoningL">使用分區 / 用地</label>
+        <input id="law-zoning" class="rv-input" type="text" list="law-zoning-list" maxlength="60" placeholder="例:第三種住宅區、公園用地(可查都市計畫書圖)" data-i18n-ph="law.zoningPh" />
+        <datalist id="law-zoning-list">
+          <option value="第一種住宅區"></option><option value="第二種住宅區"></option><option value="第三種住宅區"></option><option value="第四種住宅區"></option>
+          <option value="商業區"></option><option value="工業區"></option><option value="農業區"></option><option value="保護區"></option><option value="風景區"></option>
+          <option value="公園用地"></option><option value="綠地用地"></option><option value="兒童遊樂場用地"></option><option value="廣場用地"></option>
+          <option value="學校用地"></option><option value="機關用地"></option><option value="醫療用地"></option><option value="社會福利設施用地"></option>
+          <option value="河川區"></option><option value="非都市土地"></option>
+        </datalist>
+        <label class="law-label" for="law-use" data-i18n="law.useL">預定開發 / 規劃用途</label>
+        <input id="law-use" class="rv-input" type="text" list="law-use-list" maxlength="80" placeholder="例:社區療癒花園、長照日照中心" data-i18n-ph="law.usePh" />
+        <datalist id="law-use-list">
+          <option value="社區公園 / 鄰里公園"></option><option value="口袋公園"></option><option value="療癒花園 / 療癒景觀"></option>
+          <option value="既有公園改善"></option><option value="校園綠化"></option><option value="醫院療癒庭園"></option>
+          <option value="長照 / 日照中心"></option><option value="社會住宅"></option><option value="都市農園"></option><option value="滯洪 / 生態公園"></option>
+        </datalist>
+        <textarea id="law-notes" class="rv-text law-notes" rows="2" maxlength="300" placeholder="補充(選填):例如保留既有大樹、鄰近學校、預計增建小型建物…" data-i18n-ph="law.notesPh"></textarea>
+        <button id="law-btn" class="tool-btn" type="button" data-i18n="law.btn">搜尋相關法規並分析</button>
+        <p class="hint" data-i18n="law.cost">約需 1–3 分鐘;每次約 US$0.3–1(依檢索量而定)。</p>
+        <p class="hint law-status" id="law-status" role="status" aria-live="polite"></p>
+        <div id="law-output" class="ai-output law-output"></div>
+        <p class="hint" id="law-source"></p>
+      </section>
+
       <!-- AI 解讀 -->
       <section class="panel">
         <h2 data-i18n="ai.h">AI 解讀</h2>
@@ -294,11 +323,11 @@
   <!-- Marked (Markdown 渲染 AI 報告) -->
   <script src="https://unpkg.com/marked@12.0.2/marked.min.js"></script>
 
-  <script src="./js/i18n.js?v=5k"></script>
-  <script src="./js/openspace-service-level.js?v=5k"></script>
-  <script src="./js/comments-layer.js?v=5k"></script>
-  <script src="./js/ndvi-analysis.js?v=5k"></script>
-  <script src="./js/review-analysis.js?v=5k"></script>
-  <script src="./js/app.js?v=5k"></script>
+  <script src="./js/i18n.js?v=5l"></script>
+  <script src="./js/openspace-service-level.js?v=5l"></script>
+  <script src="./js/comments-layer.js?v=5l"></script>
+  <script src="./js/ndvi-analysis.js?v=5l"></script>
+  <script src="./js/review-analysis.js?v=5l"></script>
+  <script src="./js/app.js?v=5l"></script>
 </body>
 </html>
