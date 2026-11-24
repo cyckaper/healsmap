@@ -5,11 +5,18 @@
   "type": "module",
   "description": "基地分析工作站 — 建置工具(產出 public/data 圖資與人口指標)",
   "scripts": {
-    "build:data": "node scripts/build-data.mjs"
+    "build:data": "node scripts/build-data.mjs",
+    "build:zoning": "node scripts/build-zoning.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.13.0",
     "@netlify/blobs": "^10.7.13",
     "topojson-client": "^3.1.0"
+  },
+  "devDependencies": {
+    "adm-zip": "^0.5.18",
+    "proj4": "^2.23.0",
+    "shapefile": "^0.6.6",
+    "simplify-js": "^1.2.4"
   }
 }

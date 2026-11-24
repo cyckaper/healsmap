@@ -9,6 +9,10 @@
  *  - 面:以基地多邊形查詢並取回分區圖形(outSR=4326),用 turf 計算各分區占基地面積比例
  *  一律用 POST(application/x-www-form-urlencoded 為「簡單請求」,不需 CORS 預檢,也不受網址長度限制)
  *
+ * 另一種來源:縣市只提供整份 SHP 開放資料(新北市)時,由 scripts/build-zoning.mjs 轉成
+ * public/zoning/<key>/ 的 0.05° 圖磚(GeoJSON,properties: i=唯一 id、z=分區名稱),
+ * 點位只載入所在圖磚、基地載入相交圖磚,在瀏覽器以 turf 判斷,輸出格式與即時查詢相同。
+ *
  * 暴露 window.ZoningLookup:{ SERVICES, supported(county), lookup(opts) → Promise<result>, summary(result) }
  */
 (function () {
@@ -47,6 +51,18 @@
       agency: "臺中市政府都市發展局", layer: "都市計畫使用分區",
       url: "https://mcgbm.taichung.gov.tw/arcgis/rest/services/URBAN97/MapServer/1",
       name: NAME_CANDIDATES, short: [], code: [], bcr: [], far: [], plan: [],
+      verified: false
+    },
+    "新北市": {
+      agency: "新北市政府城鄉發展局", layer: "都市計畫土地使用分區圖",
+      type: "static", base: "./zoning/ntpc/",
+      verified: true
+    },
+    "高雄市": {
+      // 民國 105 年版圖層(使用分區105,顯示欄位 NAME);伺服器擋海外連線未能實測欄位
+      agency: "高雄市政府", layer: "使用分區105(民國105年資料,可能未含其後變更)",
+      url: "https://pipegis3d.kcg.gov.tw/server/rest/services/BasicMap/%E5%9C%9F%E5%9C%B0%E4%BD%BF%E7%94%A8%E5%88%86%E5%8D%80/MapServer/1",
+      name: ["NAME"].concat(NAME_CANDIDATES), short: [], code: [], bcr: [], far: [], plan: [],
       verified: false
     },
     "苗栗縣": {
@@ -140,6 +156,91 @@
     return zones.filter(function (z) { return !withArea || z.share >= 0.005; }); // 面模式:忽略 <0.5% 的邊緣碎片
   }
 
+  // ---- 靜態圖磚(開放資料預先切好的 GeoJSON)----
+  var staticCache = {}; // url → Promise<json>
+  function getJSON(url, signal) {
+    if (!staticCache[url]) {
+      staticCache[url] = fetch(url, { signal: signal }).then(function (r) {
+        if (r.status === 404) return null; // 該格無分區資料
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.json();
+      });
+      staticCache[url].catch(function () { delete staticCache[url]; }); // 失敗不快取,下次重試
+    }
+    return staticCache[url];
+  }
+  function tileKeys(index, bbox) {
+    var d = index.tile_deg, keys = [];
+    for (var ix = Math.floor(bbox[0] / d); ix <= Math.floor(bbox[2] / d); ix++) {
+      for (var iy = Math.floor(bbox[1] / d); iy <= Math.floor(bbox[3] / d); iy++) {
+        var k = ix + "_" + iy;
+        if (index.tiles.indexOf(k) >= 0) keys.push(k);
+      }
+    }
+    return keys;
+  }
+  function bboxHit(a, b) { return a[0] <= b[2] && a[2] >= b[0] && a[1] <= b[3] && a[3] >= b[1]; }
+  // 載入相交圖磚、依 id 去重,回傳 [{f, bb}]
+  function staticCandidates(svc, bbox, signal) {
+    return getJSON(svc.base + "index.json", signal).then(function (index) {
+      if (!index) throw new Error("zoning index missing");
+      svc.dataDate = index.downloaded;
+      var keys = tileKeys(index, bbox);
+      var partial = keys.length > 16;
+      return Promise.all(keys.slice(0, 16).map(function (k) { return getJSON(svc.base + "t_" + k + ".json", signal); }))
+        .then(function (fcs) {
+          var seen = {}, out = [];
+          fcs.forEach(function (fc) {
+            ((fc && fc.features) || []).forEach(function (f) {
+              var id = f.properties && f.properties.i;
+              if (seen[id]) return;
+              seen[id] = 1;
+              var bb = f.bbox || (f.bbox = turf.bbox(f));
+              if (bboxHit(bb, bbox)) out.push(f);
+            });
+          });
+          return { feats: out, partial: partial };
+        });
+    });
+  }
+  // 轉成與 ArcGIS 結果相同的彙整格式
+  function staticZones(feats, site) {
+    var byName = {}, order = [], siteArea = site ? turf.area(site) : 0;
+    feats.forEach(function (f) {
+      var name = String(f.properties.z || "");
+      if (!name) return;
+      var z = byName[name];
+      if (!z) { z = byName[name] = { name: name, count: 0, area_m2: 0, short: null, code: null, bcr: null, far: null, plan: null }; order.push(name); }
+      z.count++;
+      if (site) { try { var x = turf.intersect(site, f); if (x) z.area_m2 += turf.area(x); } catch (e) { /* 只計筆數 */ } }
+    });
+    var zones = order.map(function (n) { return byName[n]; });
+    var withArea = siteArea > 0 && zones.some(function (z) { return z.area_m2 > 0; });
+    zones.forEach(function (z) { z.share = withArea ? +(z.area_m2 / siteArea).toFixed(3) : null; z.area_m2 = withArea ? Math.round(z.area_m2) : null; });
+    if (withArea) { zones = zones.filter(function (z) { return z.share >= 0.005; }); zones.sort(function (a, b) { return b.share - a.share; }); }
+    return zones;
+  }
+  function staticLookup(svc, opts, signal) {
+    if (opts.polygon) {
+      var bb = turf.bbox(opts.polygon);
+      return staticCandidates(svc, bb, signal).then(function (c) {
+        var hits = c.feats.filter(function (f) { try { return turf.booleanIntersects(opts.polygon, f); } catch (e) { return false; } });
+        return { zones: staticZones(hits, opts.polygon), partial: c.partial };
+      });
+    }
+    var lng = +opts.lng, lat = +opts.lat, pt = turf.point([lng, lat]);
+    return staticCandidates(svc, [lng - NEAR_DEG, lat - NEAR_DEG, lng + NEAR_DEG, lat + NEAR_DEG], signal).then(function (c) {
+      var inside = c.feats.filter(function (f) {
+        return f.bbox[0] <= lng && lng <= f.bbox[2] && f.bbox[1] <= lat && lat <= f.bbox[3] && turf.booleanPointInPolygon(pt, f);
+      });
+      if (inside.length) return { zones: staticZones(inside, null) };
+      // 點位落在道路 / 分區縫隙:取約 15 m 範圍內的分區
+      var box = turf.bboxPolygon([lng - NEAR_DEG, lat - NEAR_DEG, lng + NEAR_DEG, lat + NEAR_DEG]);
+      var near = c.feats.filter(function (f) { try { return turf.booleanIntersects(box, f); } catch (e) { return false; } });
+      return { zones: staticZones(near, null), nearby: true };
+    });
+  }
+
   /* opts: { county, lat, lng, polygon (GeoJSON Feature, 面模式), signal }
    * result: { status: ok|none|unsupported|error, county, agency, layer, url, verified,
    *           mode: point|site, nearby, zones:[{name, share, area_m2, count, short, code, bcr, far, plan}],
@@ -159,7 +260,9 @@
     var common = { f: "json", inSR: "4326", spatialRel: "esriSpatialRelIntersects", outFields: "*" };
 
     var p;
-    if (opts.polygon) {
+    if (svc.type === "static") {
+      p = staticLookup(svc, opts, signal);
+    } else if (opts.polygon) {
       var ring = opts.polygon.geometry.coordinates[0];
       p = post(svc.url, Object.assign({}, common, {
         geometry: JSON.stringify({ rings: [ring], spatialReference: { wkid: 4326 } }),
@@ -190,6 +293,7 @@
     return p.then(function (r) {
       var plans = [];
       r.zones.forEach(function (z) { if (z.plan && plans.indexOf(z.plan) < 0) plans.push(String(z.plan).trim()); });
+      if (svc.type === "static" && svc.dataDate) base.data_date = svc.dataDate;
       return Object.assign(base, {
         status: r.zones.length ? "ok" : "none", zones: r.zones.slice(0, 12), plans: plans,
         nearby: !!r.nearby && r.zones.length > 0, partial: !!r.partial

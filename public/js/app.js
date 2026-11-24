@@ -2277,7 +2277,7 @@
       if (res.plans && res.plans.length) parts.push(t("zon.plan", { p: res.plans.slice(0, 2).join("、") }));
       var bcr = pctTxt(z0.bcr), far = pctTxt(z0.far);
       if (res.mode === "point" && (bcr || far)) parts.push(t("zon.ratio", { b: bcr || "—", f: far || "—" }));
-      parts.push(t("zon.src", { a: res.agency || "", l: res.layer || "" }));
+      parts.push(t("zon.src", { a: res.agency || "", l: res.layer || "" }) + (res.data_date ? t("zon.dataDate", { d: res.data_date }) : ""));
       if (res.partial) parts.push(t("zon.partial"));
       if (res.verified === false) parts.push(t("zon.unverified"));
       lawZoningAutoEl.textContent = parts.join(" · ");
@@ -2324,7 +2324,8 @@
     var z = lastZoning;
     if (!z || lastZoningRev !== siteRev || z.status === "unsupported") return null;
     return {
-      status: z.status, source: ((z.agency || "") + " " + (z.layer || "")).trim(), verified: z.verified !== false,
+      status: z.status, verified: z.verified !== false,
+      source: ((z.agency || "") + " " + (z.layer || "")).trim() + (z.data_date ? t("zon.dataDate", { d: z.data_date }) : ""),
       mode: z.mode, nearby: !!z.nearby, plans: z.plans || [],
       zones: (z.zones || []).slice(0, 6).map(function (x) { return { name: x.name, share: x.share, bcr: x.bcr, far: x.far }; }),
       user_edited: lawZoningEl.dataset.manual === "1"
@@ -2694,7 +2695,7 @@
       html += "<h2>" + t("r.hZoning") + "</h2><table class='summary'>" +
         prow(t(zn.nearby ? "r.zoningNear" : "r.zoningZones"), esc(window.ZoningLookup.summary(zn, 8))) +
         (zn.plans && zn.plans.length ? prow(t("r.zoningPlan"), esc(zn.plans.join("、"))) : "") +
-        prow(t("r.zoningSrc"), esc((zn.agency || "") + " " + (zn.layer || "")) +
+        prow(t("r.zoningSrc"), esc((zn.agency || "") + " " + (zn.layer || "") + (zn.data_date ? t("zon.dataDate", { d: zn.data_date }) : "")) +
           (zn.verified === false ? " " + esc(t("zon.unverified")) : "")) +
         "</table>";
     }
