@@ -10,7 +10,7 @@
   <!-- Leaflet.draw -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
 
-  <link rel="stylesheet" href="./css/style.css?v=5l" />
+  <link rel="stylesheet" href="./css/style.css?v=5m" />
 </head>
 <body>
   <div id="app">
@@ -225,9 +225,9 @@
       <section class="panel">
         <h2 data-i18n="law.h">法規檢索 · 影響分析</h2>
         <details class="help-box"><summary data-i18n="help.t">ⓘ 說明與計算方式</summary><div class="help-body" data-i18n="help.law" data-i18n-html></div></details>
-        <p class="info-region" id="law-region" data-i18n="law.hint">先放標記或畫基地,填入使用分區與預定用途(選填),由 AI 到官方法規網站檢索,整理會影響本基地規劃設計的法條,並逐條分析影響與設計因應。</p>
-        <label class="law-label" for="law-zoning" data-i18n="law.zoningL">使用分區 / 用地</label>
-        <input id="law-zoning" class="rv-input" type="text" list="law-zoning-list" maxlength="60" placeholder="例:第三種住宅區、公園用地(可查都市計畫書圖)" data-i18n-ph="law.zoningPh" />
+        <p class="info-region" id="law-region" data-i18n="law.hint">先放標記或畫基地(會自動查詢都市計畫使用分區),填入預定用途(選填),由 AI 到官方法規網站檢索,整理會影響本基地規劃設計的法條,並逐條分析影響與設計因應。</p>
+        <label class="law-label" for="law-zoning" data-i18n="law.zoningL">使用分區 / 用地(自動查詢,可修改)</label>
+        <input id="law-zoning" class="rv-input" type="text" list="law-zoning-list" maxlength="60" placeholder="放標記或畫基地後自動查詢;也可手動輸入" data-i18n-ph="law.zoningPh" />
         <datalist id="law-zoning-list">
           <option value="第一種住宅區"></option><option value="第二種住宅區"></option><option value="第三種住宅區"></option><option value="第四種住宅區"></option>
           <option value="商業區"></option><option value="工業區"></option><option value="農業區"></option><option value="保護區"></option><option value="風景區"></option>
@@ -235,6 +235,7 @@
           <option value="學校用地"></option><option value="機關用地"></option><option value="醫療用地"></option><option value="社會福利設施用地"></option>
           <option value="河川區"></option><option value="非都市土地"></option>
         </datalist>
+        <p class="hint law-zoning-auto" id="law-zoning-auto" aria-live="polite"></p>
         <label class="law-label" for="law-use" data-i18n="law.useL">預定開發 / 規劃用途</label>
         <input id="law-use" class="rv-input" type="text" list="law-use-list" maxlength="80" placeholder="例:社區療癒花園、長照日照中心" data-i18n-ph="law.usePh" />
         <datalist id="law-use-list">
@@ -323,11 +324,12 @@
   <!-- Marked (Markdown 渲染 AI 報告) -->
   <script src="https://unpkg.com/marked@12.0.2/marked.min.js"></script>
 
-  <script src="./js/i18n.js?v=5l"></script>
-  <script src="./js/openspace-service-level.js?v=5l"></script>
-  <script src="./js/comments-layer.js?v=5l"></script>
-  <script src="./js/ndvi-analysis.js?v=5l"></script>
-  <script src="./js/review-analysis.js?v=5l"></script>
-  <script src="./js/app.js?v=5l"></script>
+  <script src="./js/i18n.js?v=5m"></script>
+  <script src="./js/openspace-service-level.js?v=5m"></script>
+  <script src="./js/comments-layer.js?v=5m"></script>
+  <script src="./js/ndvi-analysis.js?v=5m"></script>
+  <script src="./js/review-analysis.js?v=5m"></script>
+  <script src="./js/zoning-lookup.js?v=5m"></script>
+  <script src="./js/app.js?v=5m"></script>
 </body>
 </html>

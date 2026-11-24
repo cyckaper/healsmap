@@ -159,11 +159,13 @@
   var lastNdvi = null, lastNdviRev = -1; // NDVI 結果(可序列化部分)與其 siteRev
   var lastReviews = null;              // 在地評價 · 評論分析結果(使用者提供之文字,與座標無關)
   var lastLaw = null, lastLawRev = -1;   // 法規檢索 · 影響分析結果與其 siteRev
+  var lastZoning = null, lastZoningRev = -1; // 都市計畫使用分區自動查詢結果與其 siteRev
 
   function onSiteChanged() {
     siteRev++;
     resetNdviPanel(); // NDVI 疊圖屬於舊範圍,換地點即清除
     resetLawPanel();  // 法規檢索結果屬於舊基地
+    startZoningLookup(); // 新基地:自動查詢都市計畫使用分區(無基地時清空)
   }
   // 新建 lastAnalysis 時呼叫:併入版本相符的 NDVI 與評論分析結果
   function attachExtras() {
@@ -172,6 +174,7 @@
     if (lastNdvi && lastNdviRev === siteRev) lastAnalysis.ndvi = lastNdvi;
     if (lastReviews) lastAnalysis.site_reviews = lastReviews;
     if (lastLaw && lastLawRev === siteRev) lastAnalysis.regulations = lastLaw;
+    if (lastZoning && lastZoningRev === siteRev) lastAnalysis.zoning = lastZoning;
   }
 
   // =========================================================
@@ -2249,6 +2252,85 @@
     lawBtn.disabled = false;
   }
 
+  // ---- 都市計畫使用分區 · 自動查詢(zoning-lookup.js,瀏覽器直接查縣市政府圖資)----
+  var lawZoningAutoEl = document.getElementById("law-zoning-auto");
+  var zoningState = { run: 0 };
+  function ZL() { return window.ZoningLookup || null; }
+
+  function countyAt(lat, lng) {
+    if (!DATA.townsIdx) return "";
+    var f = locate(lng, lat, DATA.townsIdx);
+    return (f && f.properties && f.properties.COUNTYNAME) || "";
+  }
+  function pctTxt(v) {
+    if (v == null || v === "") return null;
+    var n = Number(v);
+    return isFinite(n) ? n + "%" : String(v);
+  }
+  function renderZoningAuto(res) {
+    if (!lawZoningAutoEl) return;
+    if (!res) { lawZoningAutoEl.textContent = ""; return; }
+    if (res.status === "loading") { lawZoningAutoEl.textContent = t("zon.loading"); return; }
+    if (res.status === "ok") {
+      var z0 = res.zones[0] || {};
+      var parts = [t(res.nearby ? "zon.nearby" : "zon.ok", { z: ZL() ? ZL().summary(res, 6) : "" })];
+      if (res.plans && res.plans.length) parts.push(t("zon.plan", { p: res.plans.slice(0, 2).join("、") }));
+      var bcr = pctTxt(z0.bcr), far = pctTxt(z0.far);
+      if (res.mode === "point" && (bcr || far)) parts.push(t("zon.ratio", { b: bcr || "—", f: far || "—" }));
+      parts.push(t("zon.src", { a: res.agency || "", l: res.layer || "" }));
+      if (res.partial) parts.push(t("zon.partial"));
+      if (res.verified === false) parts.push(t("zon.unverified"));
+      lawZoningAutoEl.textContent = parts.join(" · ");
+      return;
+    }
+    if (res.status === "unsupported") {
+      lawZoningAutoEl.innerHTML = esc(t("zon.unsupported", { c: res.county || t("zon.thisArea") })) +
+        "<a href='https://luz.nlma.gov.tw/web/' target='_blank' rel='noopener'>" + esc(t("zon.luz")) + "</a>";
+      return;
+    }
+    lawZoningAutoEl.textContent = res.status === "none" ? t("zon.none") : t("zon.error", { e: res.error || "" });
+  }
+  // 自動帶入「使用分區」欄位;使用者手動改過就不覆寫(換基地時重設)
+  function applyZoningToInput(res) {
+    if (lawZoningEl.dataset.manual === "1") return;
+    var v = res && res.status === "ok" && ZL() ? ZL().summary(res, 4) : "";
+    lawZoningEl.value = v;
+    lawZoningEl.dataset.auto = v;
+  }
+  lawZoningEl.addEventListener("input", function () {
+    var v = lawZoningEl.value.trim();
+    lawZoningEl.dataset.manual = v && v !== (lawZoningEl.dataset.auto || "") ? "1" : "";
+  });
+  function startZoningLookup() {
+    var run = ++zoningState.run, rev = siteRev;
+    lastZoning = null;
+    lawZoningEl.dataset.manual = "";
+    applyZoningToInput(null);
+    if (!lastFocus || !ZL()) { renderZoningAuto(null); return; }
+    var opts = { county: countyAt(lastFocus.lat, lastFocus.lng), lat: lastFocus.lat, lng: lastFocus.lng };
+    if (lastSitePolygon) opts.polygon = lastSitePolygon;
+    renderZoningAuto({ status: "loading" });
+    ZL().lookup(opts).then(function (res) {
+      if (run !== zoningState.run || rev !== siteRev) return; // 期間已換基地
+      lastZoning = res;
+      lastZoningRev = rev;
+      renderZoningAuto(res);
+      applyZoningToInput(res);
+      if (lastAnalysis && lastAnalysisRev === rev) { lastAnalysis.zoning = res; scheduleAutoSave(); }
+    });
+  }
+  // 送給法規檢索的使用分區資訊(官方圖資查詢結果;使用者改過欄位時一併註明)
+  function zoningForLaw() {
+    var z = lastZoning;
+    if (!z || lastZoningRev !== siteRev || z.status === "unsupported") return null;
+    return {
+      status: z.status, source: ((z.agency || "") + " " + (z.layer || "")).trim(), verified: z.verified !== false,
+      mode: z.mode, nearby: !!z.nearby, plans: z.plans || [],
+      zones: (z.zones || []).slice(0, 6).map(function (x) { return { name: x.name, share: x.share, bcr: x.bcr, far: x.far }; }),
+      user_edited: lawZoningEl.dataset.manual === "1"
+    };
+  }
+
   function newLawJobId() {
     var r = (Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)).replace(/[^0-9a-z]/g, "");
     return Date.now().toString(36) + "-" + r.slice(0, 12);
@@ -2279,7 +2361,8 @@
         healing_green_intervention: a.healing_green_intervention || null,
         openspace_service_level: os ? { overall: os.overall, band: os.band } : null
       },
-      inputs: { zoning: lawZoningEl.value.trim(), use: lawUseEl.value.trim(), notes: lawNotesEl.value.trim() }
+      inputs: { zoning: lawZoningEl.value.trim(), use: lawUseEl.value.trim(), notes: lawNotesEl.value.trim() },
+      zoning_auto: zoningForLaw()
     };
   }
 
@@ -2605,6 +2688,16 @@
       prow(t("ind.aging_index"), pnum(p.aging_index)) + prow(t("ind.dep_ratio"), pnum(p.dep_ratio, " %")) +
       prow(t("h.elderly"), pnum(p.elderly_share, " %")) + prow(t("h.child"), pnum(p.child_share, " %")) +
       "</table>";
+
+    var zn = lastAnalysis.zoning;
+    if (zn && zn.status === "ok" && window.ZoningLookup) {
+      html += "<h2>" + t("r.hZoning") + "</h2><table class='summary'>" +
+        prow(t(zn.nearby ? "r.zoningNear" : "r.zoningZones"), esc(window.ZoningLookup.summary(zn, 8))) +
+        (zn.plans && zn.plans.length ? prow(t("r.zoningPlan"), esc(zn.plans.join("、"))) : "") +
+        prow(t("r.zoningSrc"), esc((zn.agency || "") + " " + (zn.layer || "")) +
+          (zn.verified === false ? " " + esc(t("zon.unverified")) : "")) +
+        "</table>";
+    }
 
     if (g.mode === "within_site") {
       html += "<h2>" + t("r.hGreenSite") + "</h2><table class='summary'>" +
@@ -3277,6 +3370,12 @@
     lastReviews = (lastAnalysis && lastAnalysis.site_reviews) || null;
     lastLaw = (lastAnalysis && lastAnalysis.regulations) || null;
     lastLawRev = siteRev;
+    zoningState.run++; // 進行中的分區查詢作廢,改用紀錄中的結果
+    lastZoning = (lastAnalysis && lastAnalysis.zoning) || null;
+    lastZoningRev = siteRev;
+    lawZoningEl.dataset.manual = "";
+    renderZoningAuto(lastZoning);
+    applyZoningToInput(lastZoning);
     histRunRef = lastAnalysis; histRunId = rec.id; // 後續自動保存仍更新同一筆
     lastRegionTitle = rec.placeName || "";
     lastSitePolygon = null;
@@ -3334,6 +3433,8 @@
     { k: "ind.aging_index", d: 1, f: function (a) { return a.population && a.population.aging_index; } },
     { k: "h.elderly", d: 1, u: "%", f: function (a) { return a.population && a.population.elderly_share; } },
     { k: "h.child", d: 1, u: "%", f: function (a) { return a.population && a.population.child_share; } },
+    { k: "hist.m.zoning", f: function (a) {
+      return a.zoning && a.zoning.status === "ok" && window.ZoningLookup ? window.ZoningLookup.summary(a.zoning, 3) : null; } },
     { k: "hist.m.osmGreen", d: 1, u: "%", f: function (a) { return a.green ? osmCoverageOf(a) : null; } },
     { k: "g.nearestDist", d: 0, u: "m", f: function (a) { return a.green && a.green.nearest_park_dist_m; } },
     { k: "hist.m.parks500", d: 0, f: function (a) { return a.green && a.green.park_count_500m; } },
@@ -3556,6 +3657,7 @@
       if (lastNdvi) lastNdvi.level = t("ndvi.lv." + ndviLevelKey(ndviState.result.mean));
     }
     if (lastLaw && lastLaw.markdown) renderLawResult(lastLaw); // applyI18n 會把標題列換回提示文字
+    if (lastZoning) renderZoningAuto(lastZoning);
     if (rvState.stats) {
       renderReviewStats();
       lastReviews = reviewsForAnalysis();
