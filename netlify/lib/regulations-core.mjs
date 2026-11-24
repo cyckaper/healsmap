@@ -77,7 +77,21 @@ export function sanitizeRequest(body) {
   };
   for (const k of Object.keys(indicators)) if (!Object.keys(indicators[k]).length) delete indicators[k];
   const inputs = { zoning: clip(inp.zoning, 60), use: clip(inp.use, 80), notes: clip(inp.notes, 300) };
-  return { lang: b.lang === "en" ? "en" : "zh", site, indicators, inputs };
+  // 前端向縣市政府都市計畫使用分區圖資自動查詢的結果(只取需要的欄位)
+  const za = b.zoning_auto && typeof b.zoning_auto === "object" ? b.zoning_auto : null;
+  const zoning_auto = za && (za.status === "ok" || za.status === "none") ? {
+    status: za.status,
+    source: clip(za.source, 80),
+    verified: za.verified !== false,
+    mode: za.mode === "site" ? "site" : "point",
+    nearby: !!za.nearby,
+    user_edited: !!za.user_edited,
+    plans: (Array.isArray(za.plans) ? za.plans : []).slice(0, 3).map((x) => clip(x, 40)).filter(Boolean),
+    zones: (Array.isArray(za.zones) ? za.zones : []).slice(0, 6).map((z) => ({
+      name: clip(z && z.name, 30), share: num(z && z.share), bcr: clip(z && z.bcr, 12), far: clip(z && z.far, 12)
+    })).filter((z) => z.name)
+  } : null;
+  return { lang: b.lang === "en" ? "en" : "zh", site, indicators, inputs, zoning_auto };
 }
 
 // ---- 提示詞 ----
@@ -86,7 +100,7 @@ const SYSTEM_ZH = `你是臺灣的都市計畫、建築與景觀規劃法規研�
 檢索方法:
 1. 用 web_search 搜尋法規;搜尋範圍已限制在官方網站(全國法規資料庫 law.moj.gov.tw、內政部國土管理署、基地所在縣市政府網域,含其法規查詢系統)。中央法規以全國法規資料庫為準;地方自治條例(土地使用分區管制、都市設計審議、樹木保護、公園管理等)查所在縣市網域。
 2. 引用任何條文前,先用 web_fetch 讀取該條文頁面(例:全國法規資料庫的單條頁 LawSingle.aspx?pcode=…&flno=…,或法規全文頁),確認條號與現行內容。
-3. 依基地條件判斷適用性:所在縣市、使用分區 / 用地(使用者提供者為準;未提供時不可自行假設,改列為「需確認」)、預定用途、基地面積(點模式為半徑範圍、非基地面積)、以及分析指標透露的設計重點(綠地不足、高齡比例高、熱脆弱度高等)。
+3. 依基地條件判斷適用性:所在縣市、使用分區 / 用地(多為自動查詢縣市政府都市計畫圖資的結果;面模式附各分區占基地面積比例,應依比例分別判斷;都沒有時不可自行假設,改列為「需確認」)、預定用途、基地面積(點模式為半徑範圍、非基地面積)、以及分析指標透露的設計重點(綠地不足、高齡比例高、熱脆弱度高等)。
 4. 可考慮的面向(只挑真正相關的):土地使用分區管制(容許使用、建蔽率、容積率)、公共設施用地與通盤檢討標準(公園、綠地、兒童遊樂場)、都市設計審議、建築基地綠化與保水(綠建築)、無障礙設施、樹木保護、公園管理、環境影響評估(依開發類型與規模門檻)、山坡地 / 水土保持 / 地質敏感區、文化資產、都市更新與容積獎勵、與預定用途相關的設施設置標準(例:長照、托育、社福設施)。
 5. 搜尋次數有限,先查最關鍵的 3–5 部法規,再補地方自治條例;同一部法規的多個條文可一次讀取全文頁。
 
@@ -95,6 +109,7 @@ const SYSTEM_ZH = `你是臺灣的都市計畫、建築與景觀規劃法規研�
 - 認為相關但沒有讀到條文的法規,不要寫條號與內容,只列在「需進一步確認的事項」。
 - 每條附上來源連結(Markdown 連結,指向你讀到的官方頁面)。
 - 地方法規以基地所在縣市為準,不要套用其他縣市的規定。
+- 自動查詢的使用分區僅供參考,請在「需進一步確認」提醒以都市計畫書圖或使用分區證明為準;有所屬都市計畫區名稱時,可據以搜尋該計畫的土地使用管制要點。
 - 寫明是法規「要求」(強制)、「審議 / 審查」(程序)、還是「準則 / 獎勵」(參考 / 選擇性)。
 
 輸出格式(繁體中文、Markdown,不要輸出 H1 / H2 大標題,也不要在開頭寫搜尋過程):
@@ -119,7 +134,7 @@ const SYSTEM_EN = `You are a research assistant for Taiwan's urban planning, bui
 Method:
 1. Use web_search to find regulations; searches are restricted to official sites (the Laws & Regulations Database law.moj.gov.tw, the National Land Management Agency, and the site's city/county government domain including its local regulations system). Central laws: use the Laws & Regulations Database; local ordinances (zoning control, urban design review, tree protection, park management, etc.): use the city/county domain.
 2. Before citing any article, use web_fetch to read its page (e.g. a single-article page LawSingle.aspx?pcode=…&flno=… or the full-text page) to confirm the article number and current wording.
-3. Judge applicability from the site: city/county, zoning / land designation (use what the user supplied; if none, do not assume—list it under items to confirm), intended use, area (in point mode the radius is a study area, not the site area), and design priorities suggested by the indicators (green-space deficit, high elderly share, heat vulnerability, etc.).
+3. Judge applicability from the site: city/county, zoning / land designation (usually looked up automatically from the city/county urban-plan map service; in site mode each zone's share of the site area is given—judge each zone accordingly; if none, do not assume—list it under items to confirm), intended use, area (in point mode the radius is a study area, not the site area), and design priorities suggested by the indicators (green-space deficit, high elderly share, heat vulnerability, etc.).
 4. Candidate topics (only those that truly apply): zoning control (permitted uses, building coverage, floor-area ratio), public-facility land and plan-review standards (parks, green space, playgrounds), urban design review, site greening and water retention (green building), accessibility, tree protection, park management, environmental impact assessment (by project type and size thresholds), slope land / soil and water conservation / geologically sensitive areas, cultural heritage, urban renewal and FAR bonuses, facility standards tied to the intended use (e.g. long-term care, childcare, social welfare).
 5. Searches are limited: cover the 3–5 most important laws first, then local ordinances; read a law's full-text page once to cover several of its articles.
 
@@ -128,6 +143,7 @@ Strict rules:
 - If you think a regulation applies but did not read its text, do not give article numbers or content—list it under items to confirm.
 - Give a source link for every article (Markdown link to the official page you read).
 - Use the local ordinances of the site's own city/county only.
+- Automatically looked-up zoning is for reference: remind under items to confirm that the urban plan maps or an official zoning certificate prevail; when an urban plan area name is given, use it to search that plan's land-use control provisions.
 - State whether each article is a requirement (mandatory), a review / approval procedure, or a guideline / incentive (optional).
 
 Output (English, Markdown; Taiwanese law names in Chinese with an English gloss; no H1/H2 headings; do not narrate the search):
@@ -148,7 +164,10 @@ Copy this sentence verbatim: "This analysis was compiled by AI from official reg
 About 700–1100 words; concise and specific; do not repeat the site data.`;
 
 export function buildUserContent(req, today) {
-  const { lang, site, indicators, inputs } = req;
+  const { lang, site, indicators, inputs, zoning_auto: za } = req;
+  const pctOf = (v) => (v == null ? "" : " " + Math.round(v * 100) + "%");
+  const ratio = (z) => (z.bcr || z.far ? "(建蔽率 " + (z.bcr || "—") + "、容積率 " + (z.far || "—") + ")" : "");
+  const zoneList = za && za.zones.length ? za.zones.map((z) => z.name + pctOf(z.share) + ratio(z)).join("、") : "";
   const zh = lang !== "en";
   const loc = [site.county, site.town, site.village].filter(Boolean).join(" ");
   const L = [];
@@ -159,7 +178,17 @@ export function buildUserContent(req, today) {
     L.push(site.mode === "site"
       ? "範圍:使用者繪製之基地範圍" + (site.area_ha != null ? ",面積約 " + site.area_ha + " 公頃" : "")
       : "範圍:點位(周邊 " + (site.radius_m || 500) + " m 分析範圍,非基地面積)");
-    L.push("使用分區 / 用地(使用者提供):" + (inputs.zoning || "未提供"));
+    if (za && za.status === "ok") {
+      L.push("使用分區 / 用地(依" + za.source + "圖資自動查詢" + (za.verified ? "" : ",此服務未經驗證") + "):" +
+        (za.nearby ? "點位落在道路或分區交界,約 15 m 內鄰近分區為 " : za.mode === "site" ? "基地範圍內(占基地面積比例)" : "") + zoneList);
+      if (za.plans.length) L.push("所屬都市計畫區:" + za.plans.join("、"));
+      if (za.user_edited && inputs.zoning) L.push("使用者另填寫的使用分區:" + inputs.zoning + "(與自動查詢不同時,兩者都要考慮並在「需進一步確認」說明)");
+    } else if (za && za.status === "none") {
+      L.push("使用分區 / 用地:依" + za.source + "圖資查無都市計畫使用分區(可能位於都市計畫區外或為非都市土地)" +
+        (inputs.zoning ? ";使用者填寫:" + inputs.zoning : ""));
+    } else {
+      L.push("使用分區 / 用地(使用者提供):" + (inputs.zoning || "未提供"));
+    }
     L.push("預定開發 / 規劃用途(使用者提供):" + (inputs.use || "未提供"));
     if (inputs.notes) L.push("補充說明(使用者提供):" + inputs.notes);
   } else {
@@ -169,7 +198,17 @@ export function buildUserContent(req, today) {
     L.push(site.mode === "site"
       ? "Extent: user-drawn site boundary" + (site.area_ha != null ? ", about " + site.area_ha + " ha" : "")
       : "Extent: point (" + (site.radius_m || 500) + " m study radius, not the site area)");
-    L.push("Zoning / land designation (user supplied): " + (inputs.zoning || "not supplied"));
+    if (za && za.status === "ok") {
+      L.push("Zoning / land designation (looked up automatically from " + za.source + (za.verified ? "" : ", unverified service") + "): " +
+        (za.nearby ? "the point is on a road or zone boundary; zones within ~15 m: " : za.mode === "site" ? "within the site (share of site area): " : "") + zoneList);
+      if (za.plans.length) L.push("Urban plan area: " + za.plans.join(", "));
+      if (za.user_edited && inputs.zoning) L.push("Zoning also entered by the user: " + inputs.zoning + " (if it differs from the lookup, consider both and flag it under items to confirm)");
+    } else if (za && za.status === "none") {
+      L.push("Zoning: no urban-plan zone found in " + za.source + " (possibly outside an urban plan area or non-urban land)" +
+        (inputs.zoning ? "; user entered: " + inputs.zoning : ""));
+    } else {
+      L.push("Zoning / land designation (user supplied): " + (inputs.zoning || "not supplied"));
+    }
     L.push("Intended development / use (user supplied): " + (inputs.use || "not supplied"));
     if (inputs.notes) L.push("Notes (user supplied): " + inputs.notes);
   }
