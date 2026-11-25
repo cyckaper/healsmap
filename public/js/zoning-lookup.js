@@ -22,10 +22,10 @@
 (function () {
   "use strict";
 
-  // 分區名稱欄位只接受「明確是分區名稱」的欄位;找不到就視為查無(寧可請使用者手填,也不顯示錯的值)
-  var NAME_CANDIDATES = ["使用分區", "ZONENAME", "LUSE", "ZoningName", "ZONE_NAME", "分區名稱"];
-
-  // verified:2026-11-24 實際查詢確認回應欄位;未驗證者(海外 IP 被擋)以候選欄位嘗試
+  // 每個服務的分區名稱欄位都經實測確認;找不到就視為查無(寧可請使用者手填,也不顯示錯的值)
+  // verified:實際查詢確認回應欄位(臺北、新竹市、彰化 2026-11-24;桃園、臺中、苗栗 2026-11-25 由使用者在臺灣網路實測,
+  // 這三個伺服器擋海外連線,跨來源請求(CORS)尚待網站上實測)。臺東 landgis 服務回 Token Required(499),未納入。
+  // detail:細部計畫名稱欄位(有助於法規檢索找到該計畫的土地使用管制要點)
   var SERVICES = {
     "臺北市": {
       agency: "臺北市政府都市發展局", layer: "都市計畫使用分區圖",
@@ -48,14 +48,15 @@
     "桃園市": {
       agency: "桃園市政府都市發展局", layer: "都市計畫使用分區",
       url: "https://urbandatasrv.tycg.gov.tw/server/rest/services/TY_UPGIS/TYMap_SDE/MapServer/2",
-      name: NAME_CANDIDATES, short: [], code: [], bcr: [], far: [], plan: [],
-      verified: false
+      name: ["LANDUSE"], short: ["PUBNO"], code: [], bcr: ["B_RATIO"], far: ["F_RATIO"], plan: ["MUPLAN"], detail: ["DUPLAN"],
+      verified: true
     },
     "臺中市": {
       agency: "臺中市政府都市發展局", layer: "都市計畫使用分區",
       url: "https://mcgbm.taichung.gov.tw/arcgis/rest/services/URBAN97/MapServer/1",
-      name: NAME_CANDIDATES, short: [], code: [], bcr: [], far: [], plan: [],
-      verified: false
+      name: ["使用分區"], short: ["都計名稱", "分區簡稱"], code: ["CODE"], bcr: ["建蔽率"], far: ["容積率"],
+      plan: ["都市計畫區"], detail: ["細部計畫區"],
+      verified: true
     },
     "新北市": {
       agency: "新北市政府城鄉發展局", layer: "都市計畫土地使用分區圖",
@@ -65,8 +66,8 @@
     "苗栗縣": {
       agency: "苗栗縣政府", layer: "都市計畫使用分區",
       url: "https://ailand.miaoli.gov.tw/server/rest/services/Dynamic/Urban_Planning/MapServer/0",
-      name: NAME_CANDIDATES, short: [], code: [], bcr: [], far: [], plan: [],
-      verified: false
+      name: ["ZoningName"], short: [], code: [], bcr: ["BuildingCo"], far: ["FloorAreaR"], plan: ["MainPlanNa"],
+      verified: true
     }
   };
   // 非都市土地使用分區(全國 18 縣市,靜態圖磚;縣市清單見 index.json 的 counties)
@@ -134,7 +135,7 @@
       name = String(name);
       var z = byName[name];
       if (!z) {
-        z = byName[name] = { name: name, count: 0, area_m2: 0, short: null, code: null, bcr: null, far: null, plan: null };
+        z = byName[name] = { name: name, count: 0, area_m2: 0, short: null, code: null, bcr: null, far: null, plan: null, detail: null };
         order.push(name);
       }
       z.count++;
@@ -143,6 +144,7 @@
       z.bcr = z.bcr != null ? z.bcr : firstVal(a, svc.bcr);
       z.far = z.far != null ? z.far : firstVal(a, svc.far);
       z.plan = z.plan || firstVal(a, svc.plan);
+      z.detail = z.detail || firstVal(a, svc.detail || []);
       if (site && f.geometry) {
         try {
           var g = esriToGeoJSON(f.geometry);
@@ -312,7 +314,11 @@
 
     return p.then(function (r) {
       var plans = [];
-      r.zones.forEach(function (z) { if (z.plan && plans.indexOf(z.plan) < 0) plans.push(String(z.plan).trim()); });
+      r.zones.forEach(function (z) {
+        if (!z.plan) return;
+        var p = String(z.plan).trim() + (z.detail ? "(" + String(z.detail).trim() + ")" : "");
+        if (plans.indexOf(p) < 0) plans.push(p);
+      });
       if (svc.type === "static" && svc.dataDate) base.data_date = svc.dataDate;
       return Object.assign(base, {
         status: r.zones.length ? "ok" : "none", zones: r.zones.slice(0, 12), plans: plans,
