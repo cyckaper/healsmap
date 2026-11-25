@@ -13,11 +13,16 @@
  *      - compact 格式(nonurban):{v:2, s:100000, n:[分區名稱…], f:[[id, 名稱索引, 多邊形…]]},
  *        每個多邊形為環的陣列,環為「首點整數座標 + 其後差值」的扁平陣列(座標 × 100000,省略閉合點);
  *        前端 zoning-lookup.js 解碼回 GeoJSON,精度與 GeoJSON 格式相同(小數 5 位)
+ *      - compact 格式附屬性(khh,v3):另有 x:[[計畫區, 建蔽率, 容積率]…] 表,
+ *        f:[[id, 名稱索引, 屬性索引(-1 = 無), 多邊形…]]
  *
  * 來源:
  *   ntpc      新北市都市計畫土地使用分區圖(城鄉發展局開放資料,單一 zip)
  *   nonurban  非都市土地使用分區圖(內政部國土管理署,data.gov.tw 資料集 169538,18 縣市各一個 zip;
  *             下載清單於建置時向 data.gov.tw API 取得)
+ *   khh       高雄市都市計畫土地使用分區圖(高雄市政府都市發展局開放資料,每個計畫區一個 zip,共 32 個計畫區;
+ *             伺服器擋海外連線,需在臺灣網路手動下載後用 --dir;zip 內 .cpg 標示 UTF-8 或 Big5,逐檔判斷;
+ *             同一網頁的「劃定更新地區圖」等非分區圖層沒有 URBANNAME 欄位,自動略過)
  *
  * 用法:
  *   npm install                                        # devDependencies:shapefile、proj4、simplify-js、adm-zip
@@ -25,6 +30,7 @@
  *   node scripts/build-zoning.mjs ntpc --zip ./x.zip   # 使用已下載的單一 zip
  *   node scripts/build-zoning.mjs nonurban             # 自動下載 18 縣市
  *   node scripts/build-zoning.mjs nonurban --dir ./zips  # 使用已下載的資料夾(所有 .zip)
+ *   node scripts/build-zoning.mjs khh --dir ./khh-zips  # 高雄市:只能用已下載的資料夾
  * 資料更新時重新執行並提交 public/zoning/<key>/。
  */
 import fs from "node:fs";
@@ -56,6 +62,17 @@ const SOURCES = {
     page: "https://data.gov.tw/dataset/169538",
     encoding: "utf-8", nameField: "使用分", countyField: "縣市", crs: TWD97_TM2,
     tileDeg: 0.05, toleranceM: 2, clip: true, format: "compact"
+  },
+  khh: {
+    county: "高雄市",
+    agency: "高雄市政府都市發展局",
+    layer: "都市計畫土地使用分區圖",
+    page: "https://urbangisdata.kcg.gov.tw/ODA/web_page/ODA020100.jsp",
+    manual: true, // 伺服器擋海外 IP,無法自動下載
+    encoding: "auto", nameField: "NAME", planField: "URBANNAME", bcrField: "BCRTEXT", farField: "FARTEXT",
+    requireField: "URBANNAME", // 沒有此欄位的 zip(劃定更新地區圖等)不是分區圖,略過
+    skipName: /^(都市計畫外|範圍外)/, // 計畫範圍外的圖形:不屬於該計畫區,留著會蓋掉非都市分區的結果
+    crs: TWD97_TM2, tileDeg: 0.05, toleranceM: 1, clip: false, format: "compact"
   }
 };
 const PRECISION = 5; // 輸出小數 5 位 ≈ 1.1 m
@@ -103,9 +120,15 @@ function clipRing(ring, [x0, y0, x1, y1]) {
 function ringArea(r) { let a = 0; for (let i = 1; i < r.length; i++) a += r[i - 1][0] * r[i][1] - r[i][0] * r[i - 1][1]; return Math.abs(a / 2); }
 const roundRing = (r) => r.map((p) => [+p[0].toFixed(PRECISION), +p[1].toFixed(PRECISION)]);
 // compact:整數差值編碼(座標已四捨五入至小數 5 位,× 1e5 後為整數,可無損還原)
-function encodeTile(feats) {
-  const names = [], idx = new Map();
+function encodeTile(feats, withAttrs) {
+  const names = [], idx = new Map(), attrs = [], aidx = new Map();
   const nameIdx = (z) => { if (!idx.has(z)) { idx.set(z, names.length); names.push(z); } return idx.get(z); };
+  const attrIdx = (pr) => {
+    if (!pr.p && !pr.b && !pr.r) return -1;
+    const row = [pr.p || "", pr.b || "", pr.r || ""], k = row.join("\t");
+    if (!aidx.has(k)) { aidx.set(k, attrs.length); attrs.push(row); }
+    return aidx.get(k);
+  };
   const encRing = (ring) => {
     const out = []; let px = 0, py = 0;
     for (let i = 0; i < ring.length - 1; i++) { // 省略閉合點
@@ -116,9 +139,11 @@ function encodeTile(feats) {
   };
   const f = feats.map((ft) => {
     const polys = ft.geometry.type === "Polygon" ? [ft.geometry.coordinates] : ft.geometry.coordinates;
-    return [ft.properties.i, nameIdx(ft.properties.z)].concat(polys.map((p) => p.map(encRing)));
+    const head = [ft.properties.i, nameIdx(ft.properties.z)];
+    if (withAttrs) head.push(attrIdx(ft.properties));
+    return head.concat(polys.map((p) => p.map(encRing)));
   });
-  return { v: 2, s: 1e5, n: names, f };
+  return withAttrs ? { v: 3, s: 1e5, n: names, x: attrs, f } : { v: 2, s: 1e5, n: names, f };
 }
 function bboxOfPolys(polys) {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -138,6 +163,7 @@ async function zipInputs(src) {
   if (zip) return [{ name: path.basename(zip), buf: fs.readFileSync(zip) }];
   if (dir) return fs.readdirSync(dir).filter((f) => f.toLowerCase().endsWith(".zip")).sort()
     .map((f) => ({ name: f, buf: fs.readFileSync(path.join(dir, f)) }));
+  if (src.manual) throw new Error("此來源無法自動下載,請先從 " + src.page + " 下載全部 zip,再以 --dir <資料夾> 執行");
   if (src.url) { console.log("下載", src.url); return [{ name: "source.zip", buf: await download(src.url) }]; }
   const meta = await (await fetch(src.datasetApi)).json();
   const dist = (meta.result && meta.result.distribution) || [];
@@ -161,7 +187,10 @@ async function main() {
   const tiles = new Map();
   const put = (k, feat) => { if (!tiles.has(k)) tiles.set(k, []); tiles.get(k).push(feat); };
   const counties = new Set();
-  let id = 0, read = 0, dropped = 0;
+  let id = 0, read = 0, dropped = 0, skippedZips = 0, dupes = 0;
+  const seenGeom = new Set(); // 同名稱、同屬性、同圖形的重複要素(來源資料偶有重複)只留一筆
+  const withAttrs = !!(src.planField || src.bcrField || src.farField);
+  const txt = (v) => (v == null ? "" : String(v).trim());
   const t0 = Date.now();
 
   for (const input of inputs) {
@@ -171,13 +200,26 @@ async function main() {
       if (!e) throw new Error(input.name + ":zip 內找不到 " + ext);
       return e.getData();
     };
-    const source = await shapefile.open(pick(".shp"), pick(".dbf"), { encoding: src.encoding });
+    let encoding = src.encoding;
+    if (encoding === "auto") { // .cpg 標示 UTF-8 才用 UTF-8,其餘(Big5、無 .cpg)用 Big5
+      const cpg = entries.find((x) => x.entryName.toLowerCase().endsWith(".cpg"));
+      encoding = cpg && /utf-?8/i.test(cpg.getData().toString()) ? "utf-8" : "big5";
+    }
+    const source = await shapefile.open(pick(".shp"), pick(".dbf"), { encoding });
+    let first = true;
     for (let r = await source.read(); !r.done; r = await source.read()) {
-      read++;
       const f = r.value, props = f.properties || {};
-      const z = String(props[src.nameField] || "").trim();
+      if (first && src.requireField && !(src.requireField in props)) {
+        console.log(`  ${input.name}:沒有 ${src.requireField} 欄位,不是分區圖層,略過`);
+        skippedZips++; break;
+      }
+      first = false;
+      read++;
+      const z = txt(props[src.nameField]);
       const g = f.geometry;
-      if (!z || !g) { dropped++; continue; }
+      if (!z || !g || (src.skipName && src.skipName.test(z))) { dropped++; continue; }
+      const extra = withAttrs ? { p: txt(props[src.planField]), b: txt(props[src.bcrField]), r: txt(props[src.farField]) } : null;
+      const propsOf = (pid) => Object.assign({ i: pid, z }, extra);
       if (src.countyField && props[src.countyField]) counties.add(String(props[src.countyField]).trim());
       const polys = g.type === "Polygon" ? [g.coordinates] : g.type === "MultiPolygon" ? g.coordinates : [];
       const outPolys = []; // WGS84、未四捨五入
@@ -191,12 +233,15 @@ async function main() {
         if (rings.length) outPolys.push(rings);
       }
       if (!outPolys.length) { dropped++; continue; }
+      const gkey = JSON.stringify([z, extra, outPolys.map((p) => p.map(roundRing))]);
+      if (seenGeom.has(gkey)) { dupes++; dropped++; continue; }
+      seenGeom.add(gkey);
       const [x0, y0, x1, y1] = bboxOfPolys(outPolys);
       const ix0 = Math.floor(x0 / T), ix1 = Math.floor(x1 / T), iy0 = Math.floor(y0 / T), iy1 = Math.floor(y1 / T);
       const asGeom = (ps) => ps.length === 1 ? { type: "Polygon", coordinates: ps[0] } : { type: "MultiPolygon", coordinates: ps };
 
       if (!src.clip || (ix0 === ix1 && iy0 === iy1)) {
-        const feat = { type: "Feature", properties: { i: ++id, z }, geometry: asGeom(outPolys.map((p) => p.map(roundRing))) };
+        const feat = { type: "Feature", properties: propsOf(++id), geometry: asGeom(outPolys.map((p) => p.map(roundRing))) };
         for (let ix = ix0; ix <= ix1; ix++) for (let iy = iy0; iy <= iy1; iy++) put(ix + "_" + iy, feat);
         continue;
       }
@@ -211,7 +256,7 @@ async function main() {
             const holes = poly.slice(1).map((h) => clipRing(h, rect)).filter((h) => h && ringArea(h) >= 1e-12);
             pieces.push([outer].concat(holes).map(roundRing));
           }
-          if (pieces.length) put(ix + "_" + iy, { type: "Feature", properties: { i: ++id, z }, geometry: asGeom(pieces) });
+          if (pieces.length) put(ix + "_" + iy, { type: "Feature", properties: propsOf(++id), geometry: asGeom(pieces) });
         }
       }
     }
@@ -223,20 +268,21 @@ async function main() {
   fs.mkdirSync(dir, { recursive: true });
   let bytes = 0, maxBytes = 0;
   for (const [k, feats] of tiles) {
-    const s = JSON.stringify(src.format === "compact" ? encodeTile(feats) : { type: "FeatureCollection", features: feats });
+    const s = JSON.stringify(src.format === "compact" ? encodeTile(feats, withAttrs) : { type: "FeatureCollection", features: feats });
     fs.writeFileSync(path.join(dir, "t_" + k + ".json"), s);
     bytes += s.length; maxBytes = Math.max(maxBytes, s.length);
   }
   const index = {
     county: src.county, counties: counties.size ? Array.from(counties).sort() : undefined,
     agency: src.agency, layer: src.layer,
-    source_url: src.url || src.datasetApi, source_page: src.page, downloaded,
+    source_url: src.url || src.datasetApi || src.page, source_page: src.page, downloaded,
+    source_files: inputs.length - skippedZips,
     records: read - dropped, pieces: id, tile_deg: T, clipped: !!src.clip, simplify_tolerance_m: src.toleranceM,
-    format: src.format === "compact" ? "compact-v2" : "geojson",
+    format: src.format === "compact" ? (withAttrs ? "compact-v3" : "compact-v2") : "geojson",
     tiles: Array.from(tiles.keys()).sort()
   };
   fs.writeFileSync(path.join(dir, "index.json"), JSON.stringify(index, null, 1) + "\n");
-  console.log(`完成:讀入 ${read} 筆(捨棄 ${dropped})、輸出 ${id} 片、${tiles.size} 個圖磚、共 ${(bytes / 1048576).toFixed(1)} MB、` +
+  console.log(`完成:讀入 ${read} 筆(捨棄 ${dropped},其中重複 ${dupes})、輸出 ${id} 片、${tiles.size} 個圖磚、共 ${(bytes / 1048576).toFixed(1)} MB、` +
     `最大圖磚 ${(maxBytes / 1048576).toFixed(2)} MB、耗時 ${((Date.now() - t0) / 1000).toFixed(0)} 秒 → ${path.relative(repo, dir)}`);
 }
 
