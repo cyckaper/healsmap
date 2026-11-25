@@ -9,8 +9,9 @@
  *  - 面:以基地多邊形查詢並取回分區圖形(outSR=4326),用 turf 計算各分區占基地面積比例
  *  一律用 POST(application/x-www-form-urlencoded 為「簡單請求」,不需 CORS 預檢,也不受網址長度限制)
  *
- * 另一種來源:縣市只提供整份 SHP 開放資料(新北市)時,由 scripts/build-zoning.mjs 轉成
- * public/zoning/<key>/ 的 0.05° 圖磚(GeoJSON,properties: i=唯一 id、z=分區名稱),
+ * 另一種來源:縣市只提供整份 SHP 開放資料(新北市、高雄市)時,由 scripts/build-zoning.mjs 轉成
+ * public/zoning/<key>/ 的 0.05° 圖磚(GeoJSON 或 compact,properties: i=唯一 id、z=分區名稱;
+ * 高雄另有 p=計畫區、b=建蔽率、r=容積率),
  * 點位只載入所在圖磚、基地載入相交圖磚,在瀏覽器以 turf 判斷,輸出格式與即時查詢相同。
  *
  * 非都市土地:內政部國土管理署「非都市土地使用分區圖(112年)」(18 縣市)同樣轉成圖磚
@@ -22,10 +23,11 @@
 (function () {
   "use strict";
 
-  // 分區名稱欄位只接受「明確是分區名稱」的欄位;找不到就視為查無(寧可請使用者手填,也不顯示錯的值)
-  var NAME_CANDIDATES = ["使用分區", "ZONENAME", "LUSE", "ZoningName", "ZONE_NAME", "分區名稱"];
-
-  // verified:2026-11-24 實際查詢確認回應欄位;未驗證者(海外 IP 被擋)以候選欄位嘗試
+  // 每個服務的分區名稱欄位都經實測確認;找不到就視為查無(寧可請使用者手填,也不顯示錯的值)
+  // verified:實際查詢確認回應欄位(臺北、新竹市、彰化 2026-11-24;桃園、臺中、苗栗 2026-11-25 由使用者在臺灣網路實測,
+  // 這三個伺服器擋海外連線,跨來源請求(CORS)尚待網站上實測)。臺東 landgis 服務回 Token Required(499),未納入;
+  // 高雄 pipegis3d 同樣需權杖,改用開放資料圖磚(見下方「高雄市」)。
+  // detail:細部計畫名稱欄位(有助於法規檢索找到該計畫的土地使用管制要點)
   var SERVICES = {
     "臺北市": {
       agency: "臺北市政府都市發展局", layer: "都市計畫使用分區圖",
@@ -48,14 +50,15 @@
     "桃園市": {
       agency: "桃園市政府都市發展局", layer: "都市計畫使用分區",
       url: "https://urbandatasrv.tycg.gov.tw/server/rest/services/TY_UPGIS/TYMap_SDE/MapServer/2",
-      name: NAME_CANDIDATES, short: [], code: [], bcr: [], far: [], plan: [],
-      verified: false
+      name: ["LANDUSE"], short: ["PUBNO"], code: [], bcr: ["B_RATIO"], far: ["F_RATIO"], plan: ["MUPLAN"], detail: ["DUPLAN"],
+      verified: true
     },
     "臺中市": {
       agency: "臺中市政府都市發展局", layer: "都市計畫使用分區",
       url: "https://mcgbm.taichung.gov.tw/arcgis/rest/services/URBAN97/MapServer/1",
-      name: NAME_CANDIDATES, short: [], code: [], bcr: [], far: [], plan: [],
-      verified: false
+      name: ["使用分區"], short: ["都計名稱", "分區簡稱"], code: ["CODE"], bcr: ["建蔽率"], far: ["容積率"],
+      plan: ["都市計畫區"], detail: ["細部計畫區"],
+      verified: true
     },
     "新北市": {
       agency: "新北市政府城鄉發展局", layer: "都市計畫土地使用分區圖",
@@ -65,8 +68,14 @@
     "苗栗縣": {
       agency: "苗栗縣政府", layer: "都市計畫使用分區",
       url: "https://ailand.miaoli.gov.tw/server/rest/services/Dynamic/Urban_Planning/MapServer/0",
-      name: NAME_CANDIDATES, short: [], code: [], bcr: [], far: [], plan: [],
-      verified: false
+      name: ["ZoningName"], short: [], code: [], bcr: ["BuildingCo"], far: ["FloorAreaR"], plan: ["MainPlanNa"],
+      verified: true
+    },
+    // 高雄市:即時服務(pipegis3d)需權杖,改用都市發展局開放資料(32 個計畫區的 SHP)轉成的靜態圖磚
+    "高雄市": {
+      agency: "高雄市政府都市發展局", layer: "都市計畫土地使用分區圖",
+      type: "static", base: "./zoning/khh/",
+      verified: true
     }
   };
   // 非都市土地使用分區(全國 18 縣市,靜態圖磚;縣市清單見 index.json 的 counties)
@@ -134,7 +143,7 @@
       name = String(name);
       var z = byName[name];
       if (!z) {
-        z = byName[name] = { name: name, count: 0, area_m2: 0, short: null, code: null, bcr: null, far: null, plan: null };
+        z = byName[name] = { name: name, count: 0, area_m2: 0, short: null, code: null, bcr: null, far: null, plan: null, detail: null };
         order.push(name);
       }
       z.count++;
@@ -143,6 +152,7 @@
       z.bcr = z.bcr != null ? z.bcr : firstVal(a, svc.bcr);
       z.far = z.far != null ? z.far : firstVal(a, svc.far);
       z.plan = z.plan || firstVal(a, svc.plan);
+      z.detail = z.detail || firstVal(a, svc.detail || []);
       if (site && f.geometry) {
         try {
           var g = esriToGeoJSON(f.geometry);
@@ -164,8 +174,10 @@
 
   // ---- 靜態圖磚(開放資料預先切好的 GeoJSON 或 compact 格式)----
   // compact(v2):{v:2, s:縮放, n:[名稱], f:[[id, 名稱索引, 多邊形…]]};環為首點整數座標 + 差值、省略閉合點
+  // compact(v3):另有 x:[[計畫區, 建蔽率, 容積率]],f:[[id, 名稱索引, 屬性索引(-1 = 無), 多邊形…]]
   function decodeTile(j) {
-    if (!j || j.v !== 2) return j;
+    if (!j || (j.v !== 2 && j.v !== 3)) return j;
+    var skip = j.v === 3 ? 3 : 2;
     var sc = j.s || 1e5;
     function ring(a) {
       var out = [], x = 0, y = 0;
@@ -174,8 +186,10 @@
       return out;
     }
     return { type: "FeatureCollection", features: j.f.map(function (r) {
-      var polys = r.slice(2).map(function (p) { return p.map(ring); });
-      return { type: "Feature", properties: { i: r[0], z: j.n[r[1]] },
+      var polys = r.slice(skip).map(function (p) { return p.map(ring); });
+      var props = { i: r[0], z: j.n[r[1]] }, x = skip === 3 && r[2] >= 0 ? j.x[r[2]] : null;
+      if (x) { props.p = x[0] || null; props.b = x[1] || null; props.r = x[2] || null; }
+      return { type: "Feature", properties: props,
         geometry: polys.length === 1 ? { type: "Polygon", coordinates: polys[0] } : { type: "MultiPolygon", coordinates: polys } };
     }) };
   }
@@ -225,18 +239,33 @@
         });
     });
   }
+  // 同名分區的交集片段先聯集再算面積:來源資料偶有同名圖形互相重疊(例:高雄大坪頂以東的農業區),
+  // 直接加總會重複計算、比例超過 100%。聯集失敗時退回加總
+  function unionArea(pieces) {
+    if (pieces.length === 1) return turf.area(pieces[0]);
+    try {
+      var u = pieces.reduce(function (a, b) { return turf.union(a, b) || a; });
+      return turf.area(u);
+    } catch (e) {
+      return pieces.reduce(function (s, x) { return s + turf.area(x); }, 0);
+    }
+  }
   // 轉成與 ArcGIS 結果相同的彙整格式
   function staticZones(feats, site) {
     var byName = {}, order = [], siteArea = site ? turf.area(site) : 0;
     feats.forEach(function (f) {
-      var name = String(f.properties.z || "");
+      var pr = f.properties, name = String(pr.z || "");
       if (!name) return;
       var z = byName[name];
       if (!z) { z = byName[name] = { name: name, count: 0, area_m2: 0, short: null, code: null, bcr: null, far: null, plan: null }; order.push(name); }
       z.count++;
-      if (site) { try { var x = turf.intersect(site, f); if (x) z.area_m2 += turf.area(x); } catch (e) { /* 只計筆數 */ } }
+      z.plan = z.plan || pr.p || null;
+      if (z.bcr == null && pr.b) z.bcr = pr.b;
+      if (z.far == null && pr.r) z.far = pr.r;
+      if (site) { try { var x = turf.intersect(site, f); if (x) (z.pieces = z.pieces || []).push(x); } catch (e) { /* 只計筆數 */ } }
     });
     var zones = order.map(function (n) { return byName[n]; });
+    zones.forEach(function (z) { if (z.pieces) { z.area_m2 = unionArea(z.pieces); delete z.pieces; } });
     var withArea = siteArea > 0 && zones.some(function (z) { return z.area_m2 > 0; });
     zones.forEach(function (z) { z.share = withArea ? +(z.area_m2 / siteArea).toFixed(3) : null; z.area_m2 = withArea ? Math.round(z.area_m2) : null; });
     if (withArea) { zones = zones.filter(function (z) { return z.share >= 0.005; }); zones.sort(function (a, b) { return b.share - a.share; }); }
@@ -312,7 +341,11 @@
 
     return p.then(function (r) {
       var plans = [];
-      r.zones.forEach(function (z) { if (z.plan && plans.indexOf(z.plan) < 0) plans.push(String(z.plan).trim()); });
+      r.zones.forEach(function (z) {
+        if (!z.plan) return;
+        var p = String(z.plan).trim() + (z.detail ? "(" + String(z.detail).trim() + ")" : "");
+        if (plans.indexOf(p) < 0) plans.push(p);
+      });
       if (svc.type === "static" && svc.dataDate) base.data_date = svc.dataDate;
       return Object.assign(base, {
         status: r.zones.length ? "ok" : "none", zones: r.zones.slice(0, 12), plans: plans,

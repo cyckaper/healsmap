@@ -3271,6 +3271,9 @@
   }
   function autoSaveAnalysis() {
     if (!lastAnalysis) return;
+    // 已換基地但尚未重新分析:晚到的舊基地結果(氣候、空品、服務水準等)不可存,
+    // 否則會用新基地的名稱與面板文字覆寫舊紀錄;舊紀錄保留換基地前最後一次的正確快照
+    if (lastAnalysisRev !== siteRev) return;
     if (histRunRef !== lastAnalysis) {
       histRunRef = lastAnalysis;
       histRunId = "a" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
