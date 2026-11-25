@@ -13,6 +13,10 @@
  * public/zoning/<key>/ 的 0.05° 圖磚(GeoJSON,properties: i=唯一 id、z=分區名稱),
  * 點位只載入所在圖磚、基地載入相交圖磚,在瀏覽器以 turf 判斷,輸出格式與即時查詢相同。
  *
+ * 非都市土地:內政部國土管理署「非都市土地使用分區圖(112年)」(18 縣市)同樣轉成圖磚
+ * (public/zoning/nonurban/,裁切模式),與都市計畫查詢並行:點位不在都市計畫分區內時改顯示非都市分區;
+ * 基地兩者合併計算面積比例;若縣市有非都市資料但點位不在其中,標示「不在非都市土地範圍」(不推定為都市計畫區)。
+ *
  * 暴露 window.ZoningLookup:{ SERVICES, supported(county), lookup(opts) → Promise<result>, summary(result) }
  */
 (function () {
@@ -64,6 +68,11 @@
       name: NAME_CANDIDATES, short: [], code: [], bcr: [], far: [], plan: [],
       verified: false
     }
+  };
+  // 非都市土地使用分區(全國 18 縣市,靜態圖磚;縣市清單見 index.json 的 counties)
+  var NONURBAN = {
+    agency: "內政部國土管理署", layer: "非都市土地使用分區圖(112年)",
+    type: "static", base: "./zoning/nonurban/", verified: true, noNearby: true
   };
   var TIMEOUT_MS = 15000;
   var NEAR_DEG = 0.00015; // 約 15 m
@@ -153,7 +162,23 @@
     return zones.filter(function (z) { return !withArea || z.share >= 0.005; }); // 面模式:忽略 <0.5% 的邊緣碎片
   }
 
-  // ---- 靜態圖磚(開放資料預先切好的 GeoJSON)----
+  // ---- 靜態圖磚(開放資料預先切好的 GeoJSON 或 compact 格式)----
+  // compact(v2):{v:2, s:縮放, n:[名稱], f:[[id, 名稱索引, 多邊形…]]};環為首點整數座標 + 差值、省略閉合點
+  function decodeTile(j) {
+    if (!j || j.v !== 2) return j;
+    var sc = j.s || 1e5;
+    function ring(a) {
+      var out = [], x = 0, y = 0;
+      for (var i = 0; i + 1 < a.length; i += 2) { x += a[i]; y += a[i + 1]; out.push([x / sc, y / sc]); }
+      if (out.length) out.push(out[0].slice());
+      return out;
+    }
+    return { type: "FeatureCollection", features: j.f.map(function (r) {
+      var polys = r.slice(2).map(function (p) { return p.map(ring); });
+      return { type: "Feature", properties: { i: r[0], z: j.n[r[1]] },
+        geometry: polys.length === 1 ? { type: "Polygon", coordinates: polys[0] } : { type: "MultiPolygon", coordinates: polys } };
+    }) };
+  }
   var staticCache = {}; // url → Promise<json>
   function getJSON(url, signal) {
     if (!staticCache[url]) {
@@ -161,7 +186,7 @@
         if (r.status === 404) return null; // 該格無分區資料
         if (!r.ok) throw new Error("HTTP " + r.status);
         return r.json();
-      });
+      }).then(decodeTile);
       staticCache[url].catch(function () { delete staticCache[url]; }); // 失敗不快取,下次重試
     }
     return staticCache[url];
@@ -231,6 +256,7 @@
         return f.bbox[0] <= lng && lng <= f.bbox[2] && f.bbox[1] <= lat && lat <= f.bbox[3] && turf.booleanPointInPolygon(pt, f);
       });
       if (inside.length) return { zones: staticZones(inside, null) };
+      if (svc.noNearby) return { zones: [] }; // 非都市:不在任何分區內代表位於都市計畫區等,不取鄰近
       // 點位落在道路 / 分區縫隙:取約 15 m 範圍內的分區
       var box = turf.bboxPolygon([lng - NEAR_DEG, lat - NEAR_DEG, lng + NEAR_DEG, lat + NEAR_DEG]);
       var near = c.feats.filter(function (f) { try { return turf.booleanIntersects(box, f); } catch (e) { return false; } });
@@ -238,11 +264,8 @@
     });
   }
 
-  /* opts: { county, lat, lng, polygon (GeoJSON Feature, 面模式), signal }
-   * result: { status: ok|none|unsupported|restricted|error, county, agency, layer, url, verified,
-   *           mode: point|site, nearby, zones:[{name, share, area_m2, count, short, code, bcr, far, plan}],
-   *           plans:[], partial, error, queried_at } */
-  function lookup(opts) {
+  // 都市計畫分區查詢(縣市即時服務或靜態圖磚)
+  function urbanLookup(opts) {
     var county = normCounty(opts.county);
     var svc = serviceFor(county);
     var base = { county: county, mode: opts.polygon ? "site" : "point", nearby: false, zones: [], plans: [],
@@ -303,16 +326,78 @@
     }).finally(function () { if (timer) clearTimeout(timer); });
   }
 
-  // 精簡摘要:「第三種住宅區 62%、公園用地 30%」或「大專用地」
+  // 非都市分區查詢:縣市不在資料範圍 → null;失敗也回 null(不影響都市計畫結果)
+  function nonurbanLookup(county, opts) {
+    return getJSON(NONURBAN.base + "index.json").then(function (index) {
+      if (!index || (index.counties || []).map(normCounty).indexOf(county) < 0) return null;
+      return staticLookup(NONURBAN, opts).then(function (r) {
+        r.zones.forEach(function (z) { z.kind = "nonurban"; });
+        return { zones: r.zones, partial: !!r.partial, data_date: index.downloaded };
+      });
+    }).catch(function () { return null; });
+  }
+  function srcOf(svc, dataDate, kind) {
+    return { agency: svc.agency, layer: svc.layer, verified: svc.verified !== false, data_date: dataDate || null, kind: kind };
+  }
+
+  /* opts: { county, lat, lng, polygon (GeoJSON Feature, 面模式), signal }
+   * result: { status: ok|none|unsupported|restricted|error|outside_nonurban, county, agency, layer, url, verified,
+   *           mode: point|site, nearby, kind: urban|nonurban|mixed,
+   *           zones:[{name, kind, share, area_m2, count, short, code, bcr, far, plan}],
+   *           sources:[{agency, layer, verified, data_date, kind}], plans:[], partial, error, urban_status, queried_at }
+   * outside_nonurban:縣市有非都市資料、點位 / 基地卻不在其中,且查不到都市計畫分區 → 可能位於都市計畫區(含特定區計畫)、
+ *   國家公園,或未劃定使用分區的土地(不能據此斷定為都市計畫區) */
+  function lookup(opts) {
+    var county = normCounty(opts.county);
+    return Promise.all([urbanLookup(opts), nonurbanLookup(county, opts)]).then(function (rs) {
+      var u = rs[0], n = rs[1];
+      u.zones.forEach(function (z) { z.kind = z.kind || "urban"; });
+      var uSrc = u.agency ? [srcOf(u, u.data_date, "urban")] : [];
+      var nSrc = n ? [srcOf(NONURBAN, n.data_date, "nonurban")] : [];
+      var nonurbanHere = n && n.zones.length > 0;
+      var out;
+      if (u.mode === "site") {
+        var zones = (u.status === "ok" ? u.zones : []).concat(nonurbanHere ? n.zones : []);
+        if (zones.length) {
+          zones.sort(function (a, b) { return (b.share || 0) - (a.share || 0); });
+          var hasU = u.status === "ok" && u.zones.length, hasN = nonurbanHere;
+          out = Object.assign({}, u, { status: "ok", zones: zones.slice(0, 12),
+            kind: hasU && hasN ? "mixed" : hasN ? "nonurban" : "urban",
+            sources: (hasU ? uSrc : []).concat(hasN ? nSrc : []), partial: !!(u.partial || (n && n.partial)) });
+        }
+      } else if (u.status === "ok" && !u.nearby) {
+        out = Object.assign({}, u, { kind: "urban", sources: uSrc });
+      } else if (nonurbanHere) {
+        out = Object.assign({}, u, { status: "ok", zones: n.zones, nearby: false, kind: "nonurban", sources: nSrc,
+          plans: [], partial: !!n.partial });
+      } else if (u.status === "ok") {
+        out = Object.assign({}, u, { kind: "urban", sources: uSrc }); // 鄰近分區(點位落在道路)
+      }
+      if (!out && n && (u.status === "unsupported" || u.status === "restricted" || u.status === "error" || u.status === "none")) {
+        // 有非都市資料但不在其中:可能是都市計畫區(含特定區計畫)、國家公園或未劃定分區的土地
+        out = Object.assign({}, u, { status: "outside_nonurban", urban_status: u.status, sources: nSrc, zones: [] });
+      }
+      out = out || Object.assign({}, u, { sources: uSrc });
+      if (out.sources && out.sources[0] && out.status === "ok") {
+        out.agency = out.sources[0].agency; out.layer = out.sources[0].layer;
+        out.verified = out.sources.every(function (x) { return x.verified; });
+        out.data_date = out.sources[0].data_date || out.data_date;
+      }
+      return out;
+    });
+  }
+
+  // 精簡摘要:「第三種住宅區 62%、公園用地 30%」「大專用地」「特定農業區(非都市)」
   function summary(res, max) {
     if (!res || res.status !== "ok") return "";
     return res.zones.slice(0, max || 4).map(function (z) {
-      return z.name + (z.share != null ? " " + Math.round(z.share * 100) + "%" : "");
+      return z.name + (z.kind === "nonurban" ? "(非都市)" : "") + (z.share != null ? " " + Math.round(z.share * 100) + "%" : "");
     }).join("、");
   }
 
   window.ZoningLookup = {
     SERVICES: SERVICES,
+    NONURBAN: NONURBAN,
     supported: function (county) { return !!serviceFor(county); },
     lookup: lookup,
     summary: summary
