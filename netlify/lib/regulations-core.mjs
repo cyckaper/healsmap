@@ -79,7 +79,7 @@ export function sanitizeRequest(body) {
   const inputs = { zoning: clip(inp.zoning, 60), use: clip(inp.use, 80), notes: clip(inp.notes, 300) };
   // 前端向縣市政府都市計畫使用分區圖資自動查詢的結果(只取需要的欄位)
   const za = b.zoning_auto && typeof b.zoning_auto === "object" ? b.zoning_auto : null;
-  const zoning_auto = za && (za.status === "ok" || za.status === "none") ? {
+  const zoning_auto = za && (za.status === "ok" || za.status === "none" || za.status === "outside_nonurban") ? {
     status: za.status,
     source: clip(za.source, 80),
     verified: za.verified !== false,
@@ -101,7 +101,7 @@ const SYSTEM_ZH = `你是臺灣的都市計畫、建築與景觀規劃法規研�
 1. 用 web_search 搜尋法規;搜尋範圍已限制在官方網站(全國法規資料庫 law.moj.gov.tw、內政部國土管理署、基地所在縣市政府網域,含其法規查詢系統)。中央法規以全國法規資料庫為準;地方自治條例(土地使用分區管制、都市設計審議、樹木保護、公園管理等)查所在縣市網域。
 2. 引用任何條文前,先用 web_fetch 讀取該條文頁面(例:全國法規資料庫的單條頁 LawSingle.aspx?pcode=…&flno=…,或法規全文頁),確認條號與現行內容。
 3. 依基地條件判斷適用性:所在縣市、使用分區 / 用地(多為自動查詢縣市政府都市計畫圖資的結果;面模式附各分區占基地面積比例,應依比例分別判斷;都沒有時不可自行假設,改列為「需確認」)、預定用途、基地面積(點模式為半徑範圍、非基地面積)、以及分析指標透露的設計重點(綠地不足、高齡比例高、熱脆弱度高等)。
-4. 可考慮的面向(只挑真正相關的):土地使用分區管制(容許使用、建蔽率、容積率)、公共設施用地與通盤檢討標準(公園、綠地、兒童遊樂場)、都市設計審議、建築基地綠化與保水(綠建築)、無障礙設施、樹木保護、公園管理、環境影響評估(依開發類型與規模門檻)、山坡地 / 水土保持 / 地質敏感區、文化資產、都市更新與容積獎勵、與預定用途相關的設施設置標準(例:長照、托育、社福設施)。
+4. 可考慮的面向(只挑真正相關的):土地使用分區管制(容許使用、建蔽率、容積率;非都市土地依區域計畫法與非都市土地使用管制規則,並留意國土計畫法之國土功能分區)、公共設施用地與通盤檢討標準(公園、綠地、兒童遊樂場)、都市設計審議、建築基地綠化與保水(綠建築)、無障礙設施、樹木保護、公園管理、環境影響評估(依開發類型與規模門檻)、山坡地 / 水土保持 / 地質敏感區、文化資產、都市更新與容積獎勵、與預定用途相關的設施設置標準(例:長照、托育、社福設施)。
 5. 搜尋次數有限,先查最關鍵的 3–5 部法規,再補地方自治條例;同一部法規的多個條文可一次讀取全文頁。
 
 嚴格規則:
@@ -135,7 +135,7 @@ Method:
 1. Use web_search to find regulations; searches are restricted to official sites (the Laws & Regulations Database law.moj.gov.tw, the National Land Management Agency, and the site's city/county government domain including its local regulations system). Central laws: use the Laws & Regulations Database; local ordinances (zoning control, urban design review, tree protection, park management, etc.): use the city/county domain.
 2. Before citing any article, use web_fetch to read its page (e.g. a single-article page LawSingle.aspx?pcode=…&flno=… or the full-text page) to confirm the article number and current wording.
 3. Judge applicability from the site: city/county, zoning / land designation (usually looked up automatically from the city/county urban-plan map service; in site mode each zone's share of the site area is given—judge each zone accordingly; if none, do not assume—list it under items to confirm), intended use, area (in point mode the radius is a study area, not the site area), and design priorities suggested by the indicators (green-space deficit, high elderly share, heat vulnerability, etc.).
-4. Candidate topics (only those that truly apply): zoning control (permitted uses, building coverage, floor-area ratio), public-facility land and plan-review standards (parks, green space, playgrounds), urban design review, site greening and water retention (green building), accessibility, tree protection, park management, environmental impact assessment (by project type and size thresholds), slope land / soil and water conservation / geologically sensitive areas, cultural heritage, urban renewal and FAR bonuses, facility standards tied to the intended use (e.g. long-term care, childcare, social welfare).
+4. Candidate topics (only those that truly apply): zoning control (permitted uses, building coverage, floor-area ratio; for non-urban land the Regional Plan Act and the Non-Urban Land Use Control Rules, plus functional zones under the Spatial Planning Act), public-facility land and plan-review standards (parks, green space, playgrounds), urban design review, site greening and water retention (green building), accessibility, tree protection, park management, environmental impact assessment (by project type and size thresholds), slope land / soil and water conservation / geologically sensitive areas, cultural heritage, urban renewal and FAR bonuses, facility standards tied to the intended use (e.g. long-term care, childcare, social welfare).
 5. Searches are limited: cover the 3–5 most important laws first, then local ordinances; read a law's full-text page once to cover several of its articles.
 
 Strict rules:
@@ -186,6 +186,9 @@ export function buildUserContent(req, today) {
     } else if (za && za.status === "none") {
       L.push("使用分區 / 用地:依" + za.source + "圖資查無都市計畫使用分區(可能位於都市計畫區外或為非都市土地)" +
         (inputs.zoning ? ";使用者填寫:" + inputs.zoning : ""));
+    } else if (za && za.status === "outside_nonurban") {
+      L.push("使用分區 / 用地:依" + za.source + ",此處不在非都市土地使用分區範圍內(可能位於都市計畫區、國家公園或未劃定使用分區的土地),且無法自動查得分區" +
+        (inputs.zoning ? ";使用者填寫:" + inputs.zoning : ";請先判斷可能的情形,並在「需進一步確認」提醒確認實際分區"));
     } else {
       L.push("使用分區 / 用地(使用者提供):" + (inputs.zoning || "未提供"));
     }
@@ -206,6 +209,9 @@ export function buildUserContent(req, today) {
     } else if (za && za.status === "none") {
       L.push("Zoning: no urban-plan zone found in " + za.source + " (possibly outside an urban plan area or non-urban land)" +
         (inputs.zoning ? "; user entered: " + inputs.zoning : ""));
+    } else if (za && za.status === "outside_nonurban") {
+      L.push("Zoning: per " + za.source + ", the site is outside non-urban zoning (it may lie in an urban plan area, a national park or unzoned land), and its zone could not be looked up" +
+        (inputs.zoning ? "; user entered: " + inputs.zoning : "; consider the possibilities and flag the actual zone under items to confirm"));
     } else {
       L.push("Zoning / land designation (user supplied): " + (inputs.zoning || "not supplied"));
     }

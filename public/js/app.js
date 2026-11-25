@@ -2267,6 +2267,14 @@
     var n = Number(v);
     return isFinite(n) ? n + "%" : String(v);
   }
+  // 來源文字:可能有兩個(都市計畫 + 非都市)
+  function zoningSourceText(res) {
+    var list = res.sources && res.sources.length ? res.sources
+      : [{ agency: res.agency, layer: res.layer, data_date: res.data_date }];
+    return list.map(function (s) {
+      return ((s.agency || "") + " " + (s.layer || "")).trim() + (s.data_date ? t("zon.dataDate", { d: s.data_date }) : "");
+    }).join("；");
+  }
   function renderZoningAuto(res) {
     if (!lawZoningAutoEl) return;
     if (!res) { lawZoningAutoEl.textContent = ""; return; }
@@ -2277,10 +2285,16 @@
       if (res.plans && res.plans.length) parts.push(t("zon.plan", { p: res.plans.slice(0, 2).join("、") }));
       var bcr = pctTxt(z0.bcr), far = pctTxt(z0.far);
       if (res.mode === "point" && (bcr || far)) parts.push(t("zon.ratio", { b: bcr || "—", f: far || "—" }));
-      parts.push(t("zon.src", { a: res.agency || "", l: res.layer || "" }) + (res.data_date ? t("zon.dataDate", { d: res.data_date }) : ""));
+      parts.push(t("zon.srcAll", { s: zoningSourceText(res) }));
       if (res.partial) parts.push(t("zon.partial"));
       if (res.verified === false) parts.push(t("zon.unverified"));
       lawZoningAutoEl.textContent = parts.join(" · ");
+      return;
+    }
+    if (res.status === "outside_nonurban") {
+      // 有非都市資料但不在其中:可能是都市計畫區、國家公園或未劃定分區的土地
+      lawZoningAutoEl.innerHTML = esc(t("zon.outsideNonurban", { c: res.county || t("zon.thisArea") })) +
+        "<a href='https://luz.nlma.gov.tw/web/' target='_blank' rel='noopener'>" + esc(t("zon.luz")) + "</a>";
       return;
     }
     if (res.status === "unsupported" || res.status === "restricted") {
@@ -2323,12 +2337,14 @@
   // 送給法規檢索的使用分區資訊(官方圖資查詢結果;使用者改過欄位時一併註明)
   function zoningForLaw() {
     var z = lastZoning;
-    if (!z || lastZoningRev !== siteRev || (z.status !== "ok" && z.status !== "none")) return null;
+    if (!z || lastZoningRev !== siteRev || (z.status !== "ok" && z.status !== "none" && z.status !== "outside_nonurban")) return null;
     return {
       status: z.status, verified: z.verified !== false,
-      source: ((z.agency || "") + " " + (z.layer || "")).trim() + (z.data_date ? t("zon.dataDate", { d: z.data_date }) : ""),
+      source: zoningSourceText(z),
       mode: z.mode, nearby: !!z.nearby, plans: z.plans || [],
-      zones: (z.zones || []).slice(0, 6).map(function (x) { return { name: x.name, share: x.share, bcr: x.bcr, far: x.far }; }),
+      zones: (z.zones || []).slice(0, 6).map(function (x) {
+        return { name: x.name + (x.kind === "nonurban" ? "(非都市土地使用分區)" : ""), share: x.share, bcr: x.bcr, far: x.far };
+      }),
       user_edited: lawZoningEl.dataset.manual === "1"
     };
   }
@@ -2696,7 +2712,7 @@
       html += "<h2>" + t("r.hZoning") + "</h2><table class='summary'>" +
         prow(t(zn.nearby ? "r.zoningNear" : "r.zoningZones"), esc(window.ZoningLookup.summary(zn, 8))) +
         (zn.plans && zn.plans.length ? prow(t("r.zoningPlan"), esc(zn.plans.join("、"))) : "") +
-        prow(t("r.zoningSrc"), esc((zn.agency || "") + " " + (zn.layer || "") + (zn.data_date ? t("zon.dataDate", { d: zn.data_date }) : "")) +
+        prow(t("r.zoningSrc"), esc(zoningSourceText(zn)) +
           (zn.verified === false ? " " + esc(t("zon.unverified")) : "")) +
         "</table>";
     }
